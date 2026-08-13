@@ -104,7 +104,7 @@ class BlenderHealthcheckIntegrationTest {
             List<Path> contracts = cached.filter(file -> file.getFileName().toString().endsWith(".scene.json")).toList();
             assertThat(contracts).isNotEmpty();
             assertThat(Files.readString(contracts.get(0)))
-                    .contains("\"sceneVersion\"")
+                    .contains("\"schemaVersion\"")
                     .contains("\"template\"")
                     .contains("healthcheck");
         }

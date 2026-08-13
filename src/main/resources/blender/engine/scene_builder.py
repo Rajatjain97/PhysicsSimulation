@@ -37,11 +37,13 @@ class SceneBuilder:
         print("render.scene=built")
 
         settings = descriptor.template.render_settings(context)
-        outcome = self._renderer.render(settings, contract.image_output)
+        outcome = self._renderer.render(settings, contract.output_path)
         print("render.resolution=" + outcome.resolution)
-        print("render.output=" + outcome.image_path)
+        print("render.fps=" + str(outcome.fps))
+        print("render.frames=" + str(outcome.frames))
+        print("render.output=" + outcome.output_path)
 
-        manifest_path = write_manifest(outcome.image_path, render_id, contract, outcome.resolution, materials)
+        manifest_path = write_manifest(outcome, render_id, contract, materials)
         print("render.manifest=" + manifest_path)
         print("render.status=completed")
         return manifest_path

@@ -18,9 +18,17 @@ class SceneContractError(Exception):
 
 @dataclass(frozen=True)
 class SceneContract:
+    """What to render, where to put it, and how the template should be configured.
+
+    The output is a single path. Whether it is a still or a movie is the template's decision - it
+    declares a duration or it does not - so the contract only has to say which kind of file Java is
+    expecting to find afterwards.
+    """
+
     schema_version: str
     template: str
-    image_output: str
+    output_path: str
+    is_video: bool = False
     parameters: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
@@ -43,12 +51,15 @@ class SceneContract:
         if not template:
             raise SceneContractError("Scene contract has no template")
 
-        image_output = document.get("output", {}).get("image")
-        if not image_output:
-            raise SceneContractError("Scene contract has no output.image")
+        output = document.get("output") or {}
+        video_output = output.get("video")
+        image_output = output.get("image")
+        if not video_output and not image_output:
+            raise SceneContractError("Scene contract has no output.video or output.image")
 
         parameters = document.get("parameters") or {}
         if not isinstance(parameters, dict):
             raise SceneContractError("Scene contract parameters must be an object")
 
-        return SceneContract(schema_version, template, image_output, parameters)
+        return SceneContract(schema_version, template, video_output or image_output,
+                             bool(video_output), parameters)

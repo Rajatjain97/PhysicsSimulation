@@ -54,13 +54,20 @@ physics-factory:
       timeout: 2m
   # The scene rendered by '--render'. 'template' is resolved by the template registry inside Blender;
   # adding a template module under src/main/resources/blender/templates is all a new scene needs.
+  # The output extension decides the artefact: .mp4 is a reel, .png is a still.
   render:
-    template: DefaultSphere
-    output-image: output/renders/demo.png
-    timeout: 5m
-    # Passed to the template verbatim. DefaultSphere understands 'material' (a shared material
-    # identifier, default DefaultGlass) and 'background' ("dark" or "white").
-    parameters: {}
+    template: BouncingSphere
+    output-file: output/videos/bouncing_sphere.mp4
+    # Hundreds of frames, so this is a render budget rather than a startup timeout.
+    timeout: 45m
+    # Passed to the template verbatim.
+    #   BouncingSphere: durationSeconds, dropHeight, bounce, material, groundMaterial
+    #   DefaultSphere:  material, background
+    parameters:
+      durationSeconds: 10
+      dropHeight: 5
+      bounce: 0.72
+      material: DefaultGlass
 
 logging:
   level:

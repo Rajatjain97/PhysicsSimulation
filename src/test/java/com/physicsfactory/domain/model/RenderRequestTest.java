@@ -25,7 +25,9 @@ class RenderRequestTest {
                 .isInstanceOf(InvalidSceneContractException.class);
         assertThatThrownBy(() -> new RenderRequest("blender/healthcheck", OUTPUT, TIMEOUT))
                 .isInstanceOf(InvalidSceneContractException.class);
-        assertThatThrownBy(() -> new RenderRequest("Healthcheck", OUTPUT, TIMEOUT))
+        assertThatThrownBy(() -> new RenderRequest("bouncing sphere", OUTPUT, TIMEOUT))
+                .isInstanceOf(InvalidSceneContractException.class);
+        assertThatThrownBy(() -> new RenderRequest("sphere.py", OUTPUT, TIMEOUT))
                 .isInstanceOf(InvalidSceneContractException.class);
         assertThatThrownBy(() -> new RenderRequest("", OUTPUT, TIMEOUT))
                 .isInstanceOf(InvalidSceneContractException.class);

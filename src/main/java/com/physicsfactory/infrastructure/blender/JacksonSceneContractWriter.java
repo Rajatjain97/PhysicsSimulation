@@ -1,5 +1,6 @@
 package com.physicsfactory.infrastructure.blender;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -30,6 +31,10 @@ public final class JacksonSceneContractWriter implements SceneContractWriter {
 
     private final JsonMapper jsonMapper = JsonMapper.builder()
             .enable(SerializationFeature.INDENT_OUTPUT)
+            // The output names either an image or a video; the other one is absent rather than null,
+            // so the document Blender reads never carries an empty field.
+            .defaultPropertyInclusion(JsonInclude.Value.construct(JsonInclude.Include.NON_NULL,
+                    JsonInclude.Include.ALWAYS))
             .build();
 
     @Override
@@ -45,7 +50,7 @@ public final class JacksonSceneContractWriter implements SceneContractWriter {
             Files.write(targetFile, json, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE);
             log.debug("Wrote scene contract v{} for template '{}' to {}",
-                    contract.sceneVersion(), contract.template(), targetFile);
+                    contract.schemaVersion(), contract.template(), targetFile);
             return targetFile;
         } catch (JsonProcessingException e) {
             throw new InvalidSceneContractException(

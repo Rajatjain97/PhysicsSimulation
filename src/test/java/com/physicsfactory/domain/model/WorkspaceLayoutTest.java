@@ -34,19 +34,16 @@ class WorkspaceLayoutTest {
         WorkspaceLayout layout = WorkspaceLayouts.rootedAt(Path.of("build", "test-workspace"));
 
         assertThat(layout.root()).isAbsolute();
-        assertThat(layout.root()).endsWith(Path.of("build", "test-workspace"));
+        // Raw: the directory does not exist, and endsWith() would try to resolve it on disk.
+        assertThat(layout.root()).endsWithRaw(Path.of("build", "test-workspace"));
     }
 
     @Test
     void exposesDirectoriesInDeclarationOrder() {
         WorkspaceLayout layout = WorkspaceLayouts.rootedAt(root);
 
-        assertThat(layout.directories().keySet()).containsExactly(
-                WorkspaceDirectory.ASSETS,
-                WorkspaceDirectory.CONFIGS,
-                WorkspaceDirectory.VIDEO_OUTPUT,
-                WorkspaceDirectory.THUMBNAIL_OUTPUT,
-                WorkspaceDirectory.LOGS);
+        // Against the enum itself, so adding a directory in a future story cannot rot this test.
+        assertThat(layout.directories().keySet()).containsExactly(WorkspaceDirectory.values());
         assertThat(layout.allDirectories()).hasSize(WorkspaceDirectory.values().length);
     }
 

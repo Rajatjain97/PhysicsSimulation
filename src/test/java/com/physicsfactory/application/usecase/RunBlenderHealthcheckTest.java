@@ -48,7 +48,8 @@ class RunBlenderHealthcheckTest {
 
         Map.Entry<SceneContract, Path> write = writer.writes().get(0);
         assertThat(write.getKey()).isEqualTo(SceneContract.forRequest(REQUEST));
-        assertThat(write.getValue()).hasParent(workspace.cache());
+        // The writer is a double, so nothing is on disk; hasParent() would try to resolve it.
+        assertThat(write.getValue().getParent()).isEqualTo(workspace.cache());
         assertThat(write.getValue().getFileName().toString()).endsWith(".scene.json");
     }
 

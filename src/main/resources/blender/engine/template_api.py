@@ -24,11 +24,22 @@ from typing import Any, Dict
 # Vertical is the product, not a template preference: Reels, Shorts and Spotlight are all portrait.
 PORTRAIT_WIDTH = 1080
 PORTRAIT_HEIGHT = 1920
+PORTRAIT_FPS = 60
+
+
+def frames_for(duration_seconds: float, fps: int) -> int:
+    """Frame count for a duration. One definition, so the renderer and a physics cache agree."""
+    return max(1, int(round(duration_seconds * fps)))
 
 
 @dataclass(frozen=True)
 class RenderSettings:
-    """What the renderer needs from a template. Declared by the template, applied by the renderer."""
+    """What the renderer needs from a template. Declared by the template, applied by the renderer.
+
+    Duration is what makes a template a video rather than a still: leave it at zero and the renderer
+    writes one image, set it and the renderer writes a movie of that length. Templates therefore
+    choose their own natural duration and never touch a Blender output setting.
+    """
 
     width: int = PORTRAIT_WIDTH
     height: int = PORTRAIT_HEIGHT
@@ -37,10 +48,20 @@ class RenderSettings:
     device: str = "CPU"
     file_format: str = "PNG"
     color_mode: str = "RGBA"
+    fps: int = PORTRAIT_FPS
+    duration_seconds: float = 0.0
 
     @property
     def resolution(self) -> str:
         return "{0}x{1}".format(self.width, self.height)
+
+    @property
+    def is_animation(self) -> bool:
+        return self.duration_seconds > 0.0
+
+    @property
+    def frames(self) -> int:
+        return frames_for(self.duration_seconds, self.fps)
 
 
 @dataclass(frozen=True)

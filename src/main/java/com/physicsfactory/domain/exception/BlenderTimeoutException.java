@@ -14,7 +14,7 @@ public final class BlenderTimeoutException extends BlenderIntegrationException {
 
     private static final long serialVersionUID = 1L;
 
-    private final List<String> command;
+    private final transient List<String> command;
     private final Duration timeout;
 
     public BlenderTimeoutException(List<String> command, Duration timeout) {

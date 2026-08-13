@@ -29,9 +29,9 @@ public final class SceneRenderRunner implements ApplicationRunner {
 
     private final RenderScene renderScene;
     private final RenderRequest renderRequest;
-    private final Map<String, String> parameters;
+    private final Map<String, Object> parameters;
 
-    public SceneRenderRunner(RenderScene renderScene, RenderRequest renderRequest, Map<String, String> parameters) {
+    public SceneRenderRunner(RenderScene renderScene, RenderRequest renderRequest, Map<String, Object> parameters) {
         this.renderScene = Objects.requireNonNull(renderScene, "renderScene must not be null");
         this.renderRequest = Objects.requireNonNull(renderRequest, "renderRequest must not be null");
         this.parameters = Map.copyOf(Objects.requireNonNull(parameters, "parameters must not be null"));

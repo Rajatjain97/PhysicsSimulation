@@ -30,7 +30,8 @@ class RenderWorkspaceTest {
         assertThat(workspace.directories()).doesNotContain(
                 layout.pathOf(WorkspaceDirectory.VIDEO_OUTPUT),
                 layout.pathOf(WorkspaceDirectory.THUMBNAIL_OUTPUT));
+        // Raw: these directories are not created by this test, and startsWith() resolves on disk.
         assertThat(workspace.directories()).allSatisfy(directory ->
-                assertThat(directory).startsWith(root.resolve("blender")));
+                assertThat(directory).startsWithRaw(root.resolve("blender")));
     }
 }

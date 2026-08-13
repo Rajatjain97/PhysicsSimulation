@@ -10,7 +10,7 @@ public final class InvalidSceneContractException extends BlenderIntegrationExcep
 
     public InvalidSceneContractException(String message) {
         super(message,
-                "The scene contract is the agreement between Java and Blender: 'sceneVersion' must be the "
+                "The scene contract is the agreement between Java and Blender: 'schemaVersion' must be the "
                         + "current version, 'template' must name an installed Blender script, and 'output' must "
                         + "be a path relative to the workspace root.");
     }

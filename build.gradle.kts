@@ -50,7 +50,9 @@ springBoot {
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.compilerArgs.add("-Xlint:all")
+    // -processing is off because spring-boot-configuration-processor deliberately claims nothing,
+    // and javac warns about every annotation it saw when it does.
+    options.compilerArgs.add("-Xlint:all,-processing")
 }
 
 tasks.withType<Test>().configureEach {

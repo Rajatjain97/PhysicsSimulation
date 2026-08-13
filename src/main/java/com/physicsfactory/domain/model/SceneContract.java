@@ -63,7 +63,7 @@ public record SceneContract(String schemaVersion, String template, Map<String, O
         Objects.requireNonNull(request, "request must not be null");
         Objects.requireNonNull(parameters, "parameters must not be null");
         return new SceneContract(CURRENT_VERSION, request.template(), Map.copyOf(parameters),
-                new SceneOutput(toPortablePath(request.outputFile())));
+                SceneOutput.forFile(toPortablePath(request.outputFile())));
     }
 
     private static String toPortablePath(Path path) {
