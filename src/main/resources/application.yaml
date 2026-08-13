@@ -25,6 +25,7 @@ physics-factory:
       configs: configs
       video-output: output/videos
       thumbnail-output: output/thumbnails
+      image-output: output/renders
       logs: logs
       # The render workspace. Everything below blender/ belongs to the render engine and can be
       # deleted without losing a deliverable; output/ holds what the user actually wants.
@@ -47,6 +48,11 @@ physics-factory:
       template: healthcheck
       output-file: output/videos/healthcheck.mp4
       timeout: 2m
+  # The scene rendered by '--render': the project's first end-to-end image.
+  render:
+    template: default
+    output-image: output/renders/demo.png
+    timeout: 5m
 
 logging:
   level:

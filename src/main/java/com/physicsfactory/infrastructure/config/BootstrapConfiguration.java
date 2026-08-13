@@ -2,6 +2,7 @@ package com.physicsfactory.infrastructure.config;
 
 import com.physicsfactory.application.port.BlenderProcessRunner;
 import com.physicsfactory.application.port.BlenderScriptLibrary;
+import com.physicsfactory.application.port.BlenderTemplateLibrary;
 import com.physicsfactory.application.port.DirectoryProvisioner;
 import com.physicsfactory.application.port.ExecutableProbe;
 import com.physicsfactory.application.port.SceneContractWriter;
@@ -9,16 +10,19 @@ import com.physicsfactory.application.port.StartupReporter;
 import com.physicsfactory.application.usecase.BootstrapEnvironment;
 import com.physicsfactory.application.usecase.DetectBlenderVersion;
 import com.physicsfactory.application.usecase.PrepareWorkspace;
+import com.physicsfactory.application.usecase.RenderScene;
 import com.physicsfactory.application.usecase.RunBlenderHealthcheck;
 import com.physicsfactory.application.usecase.ValidateBlenderInstallation;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderWorkspace;
 import com.physicsfactory.domain.model.WorkspaceLayout;
 import com.physicsfactory.infrastructure.blender.ClasspathBlenderScriptLibrary;
+import com.physicsfactory.infrastructure.blender.ClasspathBlenderTemplateLibrary;
 import com.physicsfactory.infrastructure.blender.JacksonSceneContractWriter;
 import com.physicsfactory.infrastructure.blender.ProcessBlenderRunner;
 import com.physicsfactory.infrastructure.bootstrap.BlenderHealthcheckRunner;
 import com.physicsfactory.infrastructure.bootstrap.EnvironmentBootstrapRunner;
+import com.physicsfactory.infrastructure.bootstrap.SceneRenderRunner;
 import com.physicsfactory.infrastructure.diagnostics.StartupExitCodeMapper;
 import com.physicsfactory.infrastructure.filesystem.LocalDirectoryProvisioner;
 import com.physicsfactory.infrastructure.filesystem.LocalExecutableProbe;
@@ -30,6 +34,7 @@ import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 
@@ -86,6 +91,12 @@ class BootstrapConfiguration {
     }
 
     @Bean
+    BlenderTemplateLibrary blenderTemplateLibrary(RenderWorkspace renderWorkspace) {
+        return new ClasspathBlenderTemplateLibrary(renderWorkspace,
+                new DefaultResourceLoader(ClasspathBlenderTemplateLibrary.class.getClassLoader()));
+    }
+
+    @Bean
     SceneContractWriter sceneContractWriter() {
         return new JacksonSceneContractWriter();
     }
@@ -128,6 +139,17 @@ class BootstrapConfiguration {
     }
 
     @Bean
+    RenderScene renderScene(BlenderTemplateLibrary blenderTemplateLibrary,
+                            BlenderScriptLibrary blenderScriptLibrary,
+                            SceneContractWriter sceneContractWriter,
+                            BlenderProcessRunner blenderProcessRunner,
+                            RenderWorkspace renderWorkspace,
+                            WorkspaceLayout workspaceLayout) {
+        return new RenderScene(blenderTemplateLibrary, blenderScriptLibrary, sceneContractWriter,
+                blenderProcessRunner, renderWorkspace, workspaceLayout.root());
+    }
+
+    @Bean
     RenderRequest healthcheckRequest(PhysicsFactoryProperties properties) {
         PhysicsFactoryProperties.Healthcheck healthcheck = properties.blender().healthcheck();
         return new RenderRequest(healthcheck.template(), Path.of(healthcheck.outputFile()), healthcheck.timeout());
@@ -158,6 +180,19 @@ class BootstrapConfiguration {
                                                       RunBlenderHealthcheck runBlenderHealthcheck,
                                                       RenderRequest healthcheckRequest) {
         return new BlenderHealthcheckRunner(detectBlenderVersion, runBlenderHealthcheck, healthcheckRequest);
+    }
+
+    /**
+     * The demo render request is built here rather than declared as a bean: one {@code RenderRequest}
+     * bean already exists for the healthcheck, and two of the same type would make injection depend on
+     * parameter names.
+     */
+    @Bean
+    @Order(20)
+    SceneRenderRunner sceneRenderRunner(RenderScene renderScene, PhysicsFactoryProperties properties) {
+        PhysicsFactoryProperties.Render render = properties.render();
+        return new SceneRenderRunner(renderScene,
+                new RenderRequest(render.template(), Path.of(render.outputImage()), render.timeout()));
     }
 
     @Bean

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.physicsfactory.domain.exception.InvalidSceneContractException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SceneContractTest {
@@ -19,7 +20,19 @@ class SceneContractTest {
 
         assertThat(contract.sceneVersion()).isEqualTo(SceneContract.CURRENT_VERSION);
         assertThat(contract.template()).isEqualTo("healthcheck");
-        assertThat(contract.output()).isEqualTo("output/videos/demo.mp4");
+        assertThat(contract.output().image()).isEqualTo("output/videos/demo.mp4");
+        assertThat(contract.objects()).isEmpty();
+    }
+
+    @Test
+    void carriesTheObjectsBlenderShouldPlace() {
+        RenderRequest request = new RenderRequest("default", Path.of("output", "renders", "demo.png"),
+                Duration.ofMinutes(5));
+
+        SceneContract contract = SceneContract.forRequest(request, List.of(SceneObject.sphereAtOrigin()));
+
+        assertThat(contract.output().image()).isEqualTo("output/renders/demo.png");
+        assertThat(contract.objects()).containsExactly(new SceneObject("sphere", List.of(0.0, 0.0, 0.0)));
     }
 
     @Test
@@ -27,19 +40,24 @@ class SceneContractTest {
         RenderRequest request = new RenderRequest("marbles", Path.of("output").resolve("videos").resolve("a.mp4"),
                 Duration.ofMinutes(1));
 
-        assertThat(SceneContract.forRequest(request).output()).isEqualTo("output/videos/a.mp4");
+        assertThat(SceneContract.forRequest(request).output().image()).isEqualTo("output/videos/a.mp4");
     }
 
     @Test
     void rejectsDocumentsThatBreakTheContract() {
-        assertThatThrownBy(() -> new SceneContract(0, "healthcheck", "output/videos/demo.mp4"))
+        SceneOutput output = new SceneOutput("output/videos/demo.mp4");
+
+        assertThatThrownBy(() -> new SceneContract(0, "healthcheck", output, List.of()))
                 .isInstanceOf(InvalidSceneContractException.class)
                 .hasMessageContaining("sceneVersion");
-        assertThatThrownBy(() -> new SceneContract(1, "  ", "output/videos/demo.mp4"))
+        assertThatThrownBy(() -> new SceneContract(1, "  ", output, List.of()))
                 .isInstanceOf(InvalidSceneContractException.class)
                 .hasMessageContaining("template");
-        assertThatThrownBy(() -> new SceneContract(1, "healthcheck", ""))
+        assertThatThrownBy(() -> new SceneOutput(""))
                 .isInstanceOf(InvalidSceneContractException.class)
-                .hasMessageContaining("output");
+                .hasMessageContaining("output.image");
+        assertThatThrownBy(() -> new SceneObject("sphere", List.of(0.0, 0.0)))
+                .isInstanceOf(InvalidSceneContractException.class)
+                .hasMessageContaining("coordinates");
     }
 }

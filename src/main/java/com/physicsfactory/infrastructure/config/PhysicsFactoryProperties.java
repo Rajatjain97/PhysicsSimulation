@@ -19,11 +19,13 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param workspace where Physics Factory keeps its files
  * @param blender   how to reach Blender and how long it may take
+ * @param render    the scene rendered by {@code --render}
  */
 @ConfigurationProperties(prefix = "physics-factory")
 @Validated
 public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
-                                       @Valid @NotNull Blender blender) {
+                                       @Valid @NotNull Blender blender,
+                                       @Valid @NotNull Render render) {
 
     /**
      * @param root        workspace root; may be absolute or relative to the process working directory
@@ -51,5 +53,15 @@ public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
     public record Healthcheck(@NotBlank String template,
                               @NotBlank String outputFile,
                               @NotNull Duration timeout) {
+    }
+
+    /**
+     * @param template    name of the Blender template to open
+     * @param outputImage where the rendered PNG belongs, relative to the workspace root
+     * @param timeout     how long the render may take
+     */
+    public record Render(@NotBlank String template,
+                         @NotBlank String outputImage,
+                         @NotNull Duration timeout) {
     }
 }

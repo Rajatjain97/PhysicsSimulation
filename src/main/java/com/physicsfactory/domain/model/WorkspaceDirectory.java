@@ -24,6 +24,9 @@ public enum WorkspaceDirectory {
     /** Thumbnails extracted from, or generated for, rendered videos. */
     THUMBNAIL_OUTPUT,
 
+    /** Rendered still images. */
+    IMAGE_OUTPUT,
+
     /** Application log files. */
     LOGS,
 
