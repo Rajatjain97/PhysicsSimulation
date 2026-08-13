@@ -3,7 +3,8 @@
 Run by Java as:
 
     blender --background --python render_scene.py -- \
-        --scene <contract.json> --engine <engine dir> --templates <templates dir> --render-id <id>
+        --scene <contract.json> --engine <engine dir> --templates <templates dir> \
+        --assets <assets dir> --render-id <id>
 
 Deliberately thin. This file parses arguments, puts the engine package on the import path and hands
 over; every decision worth reviewing lives in the engine modules or in a template. If this script
@@ -22,8 +23,9 @@ def main() -> None:
     engine = _import_engine(arguments.engine)
 
     contract = engine["scene_contract"].SceneContract.load(arguments.scene)
-    registry = engine["template_registry"].TemplateRegistry(arguments.templates)
-    builder = engine["scene_builder"].SceneBuilder(registry, engine["renderer"].Renderer())
+    templates = engine["template_registry"].TemplateRegistry(arguments.templates)
+    assets = engine["asset_registry"].AssetRegistry(arguments.assets)
+    builder = engine["scene_builder"].SceneBuilder(templates, assets, engine["renderer"].Renderer())
 
     builder.build_and_render(contract, arguments.render_id)
 
@@ -40,6 +42,7 @@ def _parse_arguments(argv: list) -> argparse.Namespace:
     parser.add_argument("--scene", required=True, help="path to the scene contract JSON")
     parser.add_argument("--engine", required=True, help="path to the engine package directory")
     parser.add_argument("--templates", required=True, help="path to the templates directory")
+    parser.add_argument("--assets", required=True, help="path to the shared asset library directory")
     parser.add_argument("--render-id", required=True, dest="render_id", help="identity assigned by Java")
     return parser.parse_args(argv)
 
@@ -61,7 +64,7 @@ def _import_engine(engine_directory: str) -> dict:
         sys.path.insert(0, root)
     return {
         name: importlib.import_module(ENGINE_PACKAGE + "." + name)
-        for name in ("scene_contract", "template_registry", "renderer", "scene_builder")
+        for name in ("scene_contract", "template_registry", "asset_registry", "renderer", "scene_builder")
     }
 
 

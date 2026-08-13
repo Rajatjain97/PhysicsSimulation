@@ -191,7 +191,8 @@ class BootstrapConfiguration {
     SceneRenderRunner sceneRenderRunner(RenderScene renderScene, PhysicsFactoryProperties properties) {
         PhysicsFactoryProperties.Render render = properties.render();
         return new SceneRenderRunner(renderScene,
-                new RenderRequest(render.template(), Path.of(render.outputImage()), render.timeout()));
+                new RenderRequest(render.template(), Path.of(render.outputImage()), render.timeout()),
+                render.parameters());
     }
 
     @Bean

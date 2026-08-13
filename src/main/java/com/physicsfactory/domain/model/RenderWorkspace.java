@@ -16,15 +16,17 @@ import java.util.Objects;
  *
  * @param scripts   Blender Python entry points, installed from the classpath
  * @param engine    the Blender-side rendering engine modules
+ * @param assets    the shared asset library: materials today, more categories later
  * @param templates template modules, one directory per template
  * @param renders   Blender's own render output, before it becomes a deliverable
  * @param cache     scene contracts and other short-lived files handed to Blender
  */
-public record RenderWorkspace(Path scripts, Path engine, Path templates, Path renders, Path cache) {
+public record RenderWorkspace(Path scripts, Path engine, Path assets, Path templates, Path renders, Path cache) {
 
     public RenderWorkspace {
         Objects.requireNonNull(scripts, "scripts must not be null");
         Objects.requireNonNull(engine, "engine must not be null");
+        Objects.requireNonNull(assets, "assets must not be null");
         Objects.requireNonNull(templates, "templates must not be null");
         Objects.requireNonNull(renders, "renders must not be null");
         Objects.requireNonNull(cache, "cache must not be null");
@@ -34,6 +36,7 @@ public record RenderWorkspace(Path scripts, Path engine, Path templates, Path re
         Objects.requireNonNull(layout, "layout must not be null");
         return new RenderWorkspace(layout.pathOf(WorkspaceDirectory.BLENDER_SCRIPTS),
                 layout.pathOf(WorkspaceDirectory.BLENDER_ENGINE),
+                layout.pathOf(WorkspaceDirectory.BLENDER_ASSETS),
                 layout.pathOf(WorkspaceDirectory.BLENDER_TEMPLATES),
                 layout.pathOf(WorkspaceDirectory.BLENDER_RENDERS),
                 layout.pathOf(WorkspaceDirectory.BLENDER_CACHE));
@@ -41,6 +44,6 @@ public record RenderWorkspace(Path scripts, Path engine, Path templates, Path re
 
     /** All directories, in declaration order. */
     public List<Path> directories() {
-        return List.of(scripts, engine, templates, renders, cache);
+        return List.of(scripts, engine, assets, templates, renders, cache);
     }
 }

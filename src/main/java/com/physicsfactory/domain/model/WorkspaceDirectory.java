@@ -36,6 +36,9 @@ public enum WorkspaceDirectory {
     /** The Blender-side rendering engine: registry, scene builder, renderer, template interface. */
     BLENDER_ENGINE,
 
+    /** The shared asset library: materials today, environments and fonts later. */
+    BLENDER_ASSETS,
+
     /** Template modules, one directory per template. */
     BLENDER_TEMPLATES,
 

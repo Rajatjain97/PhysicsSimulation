@@ -59,9 +59,12 @@ public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
      * @param template    name of the Blender template to open
      * @param outputImage where the rendered PNG belongs, relative to the workspace root
      * @param timeout     how long the render may take
+     * @param parameters  template-specific input, carried into the scene contract untouched;
+     *                    {@code material} selects a shared material for templates that support it
      */
     public record Render(@NotBlank String template,
                          @NotBlank String outputImage,
-                         @NotNull Duration timeout) {
+                         @NotNull Duration timeout,
+                         @NotNull Map<String, String> parameters) {
     }
 }

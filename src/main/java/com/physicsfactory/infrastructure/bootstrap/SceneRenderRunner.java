@@ -4,6 +4,7 @@ import com.physicsfactory.application.usecase.RenderScene;
 import com.physicsfactory.domain.exception.BlenderExecutionException;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderResult;
+import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,10 +29,12 @@ public final class SceneRenderRunner implements ApplicationRunner {
 
     private final RenderScene renderScene;
     private final RenderRequest renderRequest;
+    private final Map<String, String> parameters;
 
-    public SceneRenderRunner(RenderScene renderScene, RenderRequest renderRequest) {
+    public SceneRenderRunner(RenderScene renderScene, RenderRequest renderRequest, Map<String, String> parameters) {
         this.renderScene = Objects.requireNonNull(renderScene, "renderScene must not be null");
         this.renderRequest = Objects.requireNonNull(renderRequest, "renderRequest must not be null");
+        this.parameters = Map.copyOf(Objects.requireNonNull(parameters, "parameters must not be null"));
     }
 
     @Override
@@ -39,8 +42,8 @@ public final class SceneRenderRunner implements ApplicationRunner {
         if (!args.containsOption(RENDER_OPTION)) {
             return;
         }
-        log.info("Rendering template '{}'...", renderRequest.template());
-        RenderResult result = renderScene.execute(renderRequest);
+        log.info("Rendering template '{}' with parameters {}...", renderRequest.template(), parameters);
+        RenderResult result = renderScene.execute(renderRequest, parameters);
 
         if (!result.isSuccessful()) {
             throw new BlenderExecutionException(

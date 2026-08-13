@@ -14,6 +14,7 @@ import com.physicsfactory.domain.model.RenderWorkspace;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,7 @@ public final class RenderScene {
 
     private static final String SCENE_ARGUMENT = "--scene";
     private static final String ENGINE_ARGUMENT = "--engine";
+    private static final String ASSETS_ARGUMENT = "--assets";
     private static final String TEMPLATES_ARGUMENT = "--templates";
     private static final String RENDER_ID_ARGUMENT = "--render-id";
 
@@ -69,13 +71,21 @@ public final class RenderScene {
      * @throws RenderOutputMissingException                                   if Blender succeeded but wrote nothing
      */
     public RenderResult execute(RenderRequest request) {
+        return execute(request, Map.of());
+    }
+
+    /**
+     * @param parameters template-specific input, carried into the scene contract untouched
+     */
+    public RenderResult execute(RenderRequest request, Map<String, ?> parameters) {
         Objects.requireNonNull(request, "request must not be null");
+        Objects.requireNonNull(parameters, "parameters must not be null");
 
         log.info("Installing Blender runtime...");
         runtimeLibrary.installRuntime();
 
         log.info("Generating scene contract for template '{}'...", request.template());
-        RenderJob job = RenderJob.create(request);
+        RenderJob job = RenderJob.create(request, parameters);
         Path script = scriptLibrary.locate(RENDER_SCRIPT);
 
         Path sceneFile = renderWorkspace.cache().resolve(job.sceneFileName());
@@ -86,6 +96,7 @@ public final class RenderScene {
         BlenderExecution execution = processRunner.runScript(new BlenderScriptRequest(script,
                 List.of(SCENE_ARGUMENT, sceneFile.toString(),
                         ENGINE_ARGUMENT, renderWorkspace.engine().toString(),
+                        ASSETS_ARGUMENT, renderWorkspace.assets().toString(),
                         TEMPLATES_ARGUMENT, renderWorkspace.templates().toString(),
                         RENDER_ID_ARGUMENT, job.id().toString()),
                 request.timeout()));

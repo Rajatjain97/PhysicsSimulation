@@ -1,6 +1,7 @@
 package com.physicsfactory.domain.model;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -24,10 +25,16 @@ public record RenderJob(RenderJobId id, RenderRequest request, SceneContract sce
         Objects.requireNonNull(submittedAt, "submittedAt must not be null");
     }
 
-    /** Accepts a request, deriving the scene contract from it. */
+    /** Accepts a request with no template parameters. */
     public static RenderJob create(RenderRequest request) {
+        return create(request, Map.of());
+    }
+
+    /** Accepts a request, deriving the scene contract from it and the template's parameters. */
+    public static RenderJob create(RenderRequest request, Map<String, ?> parameters) {
         Objects.requireNonNull(request, "request must not be null");
-        return new RenderJob(RenderJobId.newId(), request, SceneContract.forRequest(request), Instant.now());
+        return new RenderJob(RenderJobId.newId(), request, SceneContract.forRequest(request, parameters),
+                Instant.now());
     }
 
     /** File name of this job's scene contract inside the render cache. */

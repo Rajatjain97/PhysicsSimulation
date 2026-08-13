@@ -21,19 +21,22 @@ import org.springframework.core.io.support.ResourcePatternResolver;
 /**
  * Installs the Blender-side runtime from the classpath into the render workspace.
  *
- * <p>Two trees are mirrored, preserving their sub-paths: the engine modules and the template modules.
- * A template is a directory, so {@code blender/templates/default_sphere/template.py} lands as
+ * <p>Three trees are mirrored, preserving their sub-paths: the engine modules, the shared asset
+ * library and the template modules. A template is a directory, so
+ * {@code blender/templates/default_sphere/template.py} lands as
  * {@code <workspace>/blender/templates/default_sphere/template.py} and the registry inside Blender
- * finds it by scanning - Java never opens a template or learns what one contains.
+ * finds it by scanning - Java never opens a template or an asset, or learns what one contains.
  *
  * <p>Adding a template is therefore a new directory under
- * {@code src/main/resources/blender/templates}; no Java changes, no configuration changes.
+ * {@code src/main/resources/blender/templates}, and adding a shared material is a new file under
+ * {@code src/main/resources/blender/assets/materials}; no Java changes, no configuration changes.
  */
 public final class ClasspathBlenderRuntimeLibrary implements BlenderRuntimeLibrary {
 
     private static final Logger log = LoggerFactory.getLogger(ClasspathBlenderRuntimeLibrary.class);
 
     private static final String ENGINE_ROOT = "blender/engine/";
+    private static final String ASSET_ROOT = "blender/assets/";
     private static final String TEMPLATE_ROOT = "blender/templates/";
 
     private final RenderWorkspace renderWorkspace;
@@ -48,6 +51,7 @@ public final class ClasspathBlenderRuntimeLibrary implements BlenderRuntimeLibra
     public List<Path> installRuntime() {
         List<Path> installed = new ArrayList<>();
         installed.addAll(installTree(ENGINE_ROOT, renderWorkspace.engine()));
+        installed.addAll(installTree(ASSET_ROOT, renderWorkspace.assets()));
         installed.addAll(installTree(TEMPLATE_ROOT, renderWorkspace.templates()));
         return List.copyOf(installed);
     }

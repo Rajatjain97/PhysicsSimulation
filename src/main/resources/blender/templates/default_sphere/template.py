@@ -1,23 +1,25 @@
 """DefaultSphere - a single glass sphere in a clean studio.
 
 The reference template: the simplest scene that still looks like premium social content, and the file
-to copy when writing a new one. Everything visual is here - world, backdrop, material, camera,
-lights - because that is exactly what a template is for. The engine calls the five steps in order and
-never looks inside them.
+to copy when writing a new one. It owns the framing, the lighting and the backdrop - the things that
+make this scene *this* scene - and asks the shared asset library for the sphere's surface, so there
+is no shader construction anywhere in this file.
 
-Parameters (all optional, all with sensible defaults):
+Parameters (all optional):
     background  "dark" (default) or "white"
-    tint        RGB list for the glass, for example [0.85, 0.92, 1.0]
+    material    identifier of a shared material for the sphere, default "DefaultGlass"
 """
 
 import math
 
 import bpy
 
+from engine.asset_api import set_shader_input
 from engine.template_api import RenderSettings, Template, TemplateContext
 
 SPHERE_RADIUS = 1.0
 SPHERE_HEIGHT = SPHERE_RADIUS + 0.02
+DEFAULT_MATERIAL = "DefaultGlass"
 
 BACKGROUNDS = {
     "dark": {"world": (0.015, 0.016, 0.02, 1.0), "floor": (0.05, 0.05, 0.06, 1.0)},
@@ -46,6 +48,8 @@ class DefaultSphereTemplate(Template):
         bpy.ops.mesh.primitive_plane_add(size=40.0, location=(0.0, 0.0, 0.0))
         floor = bpy.context.active_object
         floor.name = "StudioFloor"
+        # The backdrop belongs to this scene rather than the shared library: it is set dressing that
+        # follows the background parameter, not a surface other templates would reuse.
         floor.data.materials.append(_floor_material(palette["floor"]))
 
     def create_objects(self, context: TemplateContext) -> None:
@@ -55,8 +59,8 @@ class DefaultSphereTemplate(Template):
         sphere.name = "GlassSphere"
         bpy.ops.object.shade_smooth()
 
-        tint = context.parameter("tint")
-        sphere.data.materials.append(_glass_material(tint))
+        identifier = str(context.parameter("material", DEFAULT_MATERIAL))
+        sphere.data.materials.append(context.assets.materials.resolve(identifier))
 
     def configure_camera(self, context: TemplateContext) -> None:
         scene = bpy.context.scene
@@ -107,39 +111,10 @@ def _floor_material(colour: tuple):
     material = bpy.data.materials.new("StudioFloor")
     material.use_nodes = True
     shader = material.node_tree.nodes.get("Principled BSDF")
-    _set_input(shader, ("Base Color",), colour)
-    _set_input(shader, ("Roughness",), 0.45)
-    _set_input(shader, ("Metallic",), 0.0)
+    set_shader_input(shader, ("Base Color",), colour)
+    set_shader_input(shader, ("Roughness",), 0.45)
+    set_shader_input(shader, ("Metallic",), 0.0)
     return material
-
-
-def _glass_material(tint):
-    material = bpy.data.materials.new("StudioGlass")
-    material.use_nodes = True
-    shader = material.node_tree.nodes.get("Principled BSDF")
-    colour = (1.0, 1.0, 1.0, 1.0)
-    if isinstance(tint, (list, tuple)) and len(tint) >= 3:
-        colour = (float(tint[0]), float(tint[1]), float(tint[2]), 1.0)
-    _set_input(shader, ("Base Color",), colour)
-    _set_input(shader, ("Transmission Weight", "Transmission"), 1.0)
-    _set_input(shader, ("Roughness",), 0.02)
-    _set_input(shader, ("Metallic",), 0.0)
-    _set_input(shader, ("IOR",), 1.45)
-    return material
-
-
-def _set_input(shader, names: tuple, value) -> None:
-    """Sets the first input that exists.
-
-    Principled BSDF input names move between Blender versions - 'Transmission' became 'Transmission
-    Weight' in 4.0 - so templates ask for the first name that is actually there.
-    """
-    if shader is None:
-        return
-    for name in names:
-        if name in shader.inputs:
-            shader.inputs[name].default_value = value
-            return
 
 
 TEMPLATE = DefaultSphereTemplate()

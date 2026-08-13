@@ -53,10 +53,16 @@ public record SceneContract(String schemaVersion, String template, Map<String, O
         parameters = Map.copyOf(parameters);
     }
 
-    /** Builds the contract for a render request, at the current contract version. */
+    /** Builds the contract for a render request with no template parameters. */
     public static SceneContract forRequest(RenderRequest request) {
+        return forRequest(request, Map.of());
+    }
+
+    /** Builds the contract for a render request, at the current contract version. */
+    public static SceneContract forRequest(RenderRequest request, Map<String, ?> parameters) {
         Objects.requireNonNull(request, "request must not be null");
-        return new SceneContract(CURRENT_VERSION, request.template(), Map.of(),
+        Objects.requireNonNull(parameters, "parameters must not be null");
+        return new SceneContract(CURRENT_VERSION, request.template(), Map.copyOf(parameters),
                 new SceneOutput(toPortablePath(request.outputFile())));
     }
 

@@ -45,13 +45,18 @@ class RenderSettings:
 
 @dataclass(frozen=True)
 class TemplateContext:
-    """Everything a template is given: its parameters, and nothing else.
+    """Everything a template is given: its parameters and the shared asset library.
 
     Parameters come straight from the scene contract. Java never interprets them, so a template is
     free to define whatever it needs - marble count, palette, seed - without a Java change.
+
+    Assets is the AssetRegistry: `context.assets.materials.resolve("DefaultGlass")`. It is typed
+    loosely on purpose, so this module stays importable outside Blender - the registry reaches bpy,
+    this file does not.
     """
 
     parameters: Dict[str, Any] = field(default_factory=dict)
+    assets: Any = None
 
     def parameter(self, name: str, default: Any = None) -> Any:
         return self.parameters.get(name, default)

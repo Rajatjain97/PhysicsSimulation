@@ -33,6 +33,7 @@ physics-factory:
       # The engine directory must keep the name 'engine': it is imported as a Python package by
       # render_scene.py and by every template module.
       blender-engine: blender/engine
+      blender-assets: blender/assets
       blender-templates: blender/templates
       blender-renders: blender/renders
       blender-cache: blender/cache
@@ -57,6 +58,9 @@ physics-factory:
     template: DefaultSphere
     output-image: output/renders/demo.png
     timeout: 5m
+    # Passed to the template verbatim. DefaultSphere understands 'material' (a shared material
+    # identifier, default DefaultGlass) and 'background' ("dark" or "white").
+    parameters: {}
 
 logging:
   level:
