@@ -1,0 +1,4 @@
+# Failure analyzers are resolved before the application context exists, so they are registered here
+# rather than as beans.
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+com.physicsfactory.infrastructure.diagnostics.StartupValidationFailureAnalyzer

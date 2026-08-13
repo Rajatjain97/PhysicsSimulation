@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------------------------
+# Physics Factory - runtime configuration
+#
+# Every path lives here; nothing is hardcoded in Java. Values can be overridden without editing
+# this file, in the usual Spring Boot order of precedence:
+#   * command line          --physics-factory.blender.executable-path=/opt/blender/blender
+#   * environment variables BLENDER_EXECUTABLE, PHYSICS_FACTORY_HOME
+#   * an external file      --spring.config.additional-location=file:./configs/
+# ---------------------------------------------------------------------------------------------
+spring:
+  application:
+    name: physics-factory
+  main:
+    banner-mode: "off"          # the application prints its own startup summary
+    web-application-type: none  # desktop application: no embedded web server
+
+physics-factory:
+  workspace:
+    # Root of every managed folder. Defaults to the process working directory.
+    root: ${PHYSICS_FACTORY_HOME:${user.dir}}
+    # One entry per WorkspaceDirectory constant. Paths are relative to the root above; startup fails
+    # if an entry is missing, absolute, or escapes the root.
+    directories:
+      assets: assets
+      configs: configs
+      video-output: output/videos
+      thumbnail-output: output/thumbnails
+      logs: logs
+  blender:
+    # Absolute path, a path relative to the workspace root, or a bare program name resolved on PATH.
+    # Examples:
+    #   macOS   /Applications/Blender.app/Contents/MacOS/Blender
+    #   Linux   /usr/bin/blender
+    #   Windows C:/Program Files/Blender Foundation/Blender 4.2/blender.exe
+    executable-path: ${BLENDER_EXECUTABLE:blender}
+
+logging:
+  level:
+    root: INFO
+    com.physicsfactory: INFO
