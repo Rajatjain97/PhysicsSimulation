@@ -1,7 +1,6 @@
 package com.physicsfactory.domain.model;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -25,15 +24,10 @@ public record RenderJob(RenderJobId id, RenderRequest request, SceneContract sce
         Objects.requireNonNull(submittedAt, "submittedAt must not be null");
     }
 
-    /** Accepts a request for an empty scene, deriving the scene contract from it. */
+    /** Accepts a request, deriving the scene contract from it. */
     public static RenderJob create(RenderRequest request) {
-        return create(request, List.of());
-    }
-
-    /** Accepts a request, deriving the scene contract from it and the objects to place. */
-    public static RenderJob create(RenderRequest request, List<SceneObject> objects) {
         Objects.requireNonNull(request, "request must not be null");
-        return new RenderJob(RenderJobId.newId(), request, SceneContract.forRequest(request, objects), Instant.now());
+        return new RenderJob(RenderJobId.newId(), request, SceneContract.forRequest(request), Instant.now());
     }
 
     /** File name of this job's scene contract inside the render cache. */

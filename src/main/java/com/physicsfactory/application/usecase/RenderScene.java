@@ -1,8 +1,8 @@
 package com.physicsfactory.application.usecase;
 
 import com.physicsfactory.application.port.BlenderProcessRunner;
+import com.physicsfactory.application.port.BlenderRuntimeLibrary;
 import com.physicsfactory.application.port.BlenderScriptLibrary;
-import com.physicsfactory.application.port.BlenderTemplateLibrary;
 import com.physicsfactory.application.port.SceneContractWriter;
 import com.physicsfactory.domain.exception.RenderOutputMissingException;
 import com.physicsfactory.domain.model.BlenderExecution;
@@ -11,7 +11,6 @@ import com.physicsfactory.domain.model.RenderJob;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderResult;
 import com.physicsfactory.domain.model.RenderWorkspace;
-import com.physicsfactory.domain.model.SceneObject;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,37 +21,40 @@ import org.slf4j.LoggerFactory;
 /**
  * Renders one scene: build the contract, hand it to Blender, confirm the file arrived.
  *
- * <p>This is the whole pipeline Java is responsible for. Every step is an instruction; none of them
- * is rendering logic. What a sphere is, where the camera goes, how a material is built and how the
- * pixels are produced all live in Python, inside Blender.
+ * <p>This is the whole pipeline Java is responsible for, and it is template-agnostic by design. Java
+ * names a template and passes the directory templates live in; which template that name resolves to,
+ * and what it builds, is decided by the registry inside Blender. Adding {@code MarbleArena} therefore
+ * changes nothing here.
  *
- * <p>The stages are logged here rather than in the caller because this is the only place that sees
- * them all, and "which step was it on when it failed" is the first question anyone asks.
+ * <p>The stages are logged here because this is the only place that sees them all, and "which step
+ * was it on when it failed" is the first question anyone asks.
  */
 public final class RenderScene {
 
-    /** The Blender script that renders a scene contract. */
+    /** The Blender entry point that renders a scene contract. */
     public static final String RENDER_SCRIPT = "render_scene.py";
 
     private static final Logger log = LoggerFactory.getLogger(RenderScene.class);
 
     private static final String SCENE_ARGUMENT = "--scene";
-    private static final String TEMPLATE_ARGUMENT = "--template";
+    private static final String ENGINE_ARGUMENT = "--engine";
+    private static final String TEMPLATES_ARGUMENT = "--templates";
+    private static final String RENDER_ID_ARGUMENT = "--render-id";
 
-    private final BlenderTemplateLibrary templateLibrary;
+    private final BlenderRuntimeLibrary runtimeLibrary;
     private final BlenderScriptLibrary scriptLibrary;
     private final SceneContractWriter sceneContractWriter;
     private final BlenderProcessRunner processRunner;
     private final RenderWorkspace renderWorkspace;
     private final Path workspaceRoot;
 
-    public RenderScene(BlenderTemplateLibrary templateLibrary,
+    public RenderScene(BlenderRuntimeLibrary runtimeLibrary,
                        BlenderScriptLibrary scriptLibrary,
                        SceneContractWriter sceneContractWriter,
                        BlenderProcessRunner processRunner,
                        RenderWorkspace renderWorkspace,
                        Path workspaceRoot) {
-        this.templateLibrary = Objects.requireNonNull(templateLibrary, "templateLibrary must not be null");
+        this.runtimeLibrary = Objects.requireNonNull(runtimeLibrary, "runtimeLibrary must not be null");
         this.scriptLibrary = Objects.requireNonNull(scriptLibrary, "scriptLibrary must not be null");
         this.sceneContractWriter = Objects.requireNonNull(sceneContractWriter, "sceneContractWriter must not be null");
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner must not be null");
@@ -61,30 +63,31 @@ public final class RenderScene {
     }
 
     /**
-     * @throws com.physicsfactory.domain.exception.TemplateNotFoundException  if the template is unknown
      * @throws com.physicsfactory.domain.exception.ScriptNotFoundException    if the render script is missing
      * @throws com.physicsfactory.domain.exception.InvalidSceneContractException if the contract cannot be written
      * @throws com.physicsfactory.domain.exception.BlenderTimeoutException    if Blender outlived the budget
      * @throws RenderOutputMissingException                                   if Blender succeeded but wrote nothing
      */
-    public RenderResult execute(RenderRequest request, List<SceneObject> objects) {
+    public RenderResult execute(RenderRequest request) {
         Objects.requireNonNull(request, "request must not be null");
-        Objects.requireNonNull(objects, "objects must not be null");
 
-        log.info("Generating scene contract for template '{}' with {} object(s)...",
-                request.template(), objects.size());
-        RenderJob job = RenderJob.create(request, objects);
+        log.info("Installing Blender runtime...");
+        runtimeLibrary.installRuntime();
 
-        Path template = templateLibrary.locate(request.template());
+        log.info("Generating scene contract for template '{}'...", request.template());
+        RenderJob job = RenderJob.create(request);
         Path script = scriptLibrary.locate(RENDER_SCRIPT);
 
         Path sceneFile = renderWorkspace.cache().resolve(job.sceneFileName());
         log.info("Writing JSON to {}...", sceneFile);
         sceneContractWriter.write(job.scene(), sceneFile);
 
-        log.info("Launching Blender with template {}...", template);
+        log.info("Launching Blender...");
         BlenderExecution execution = processRunner.runScript(new BlenderScriptRequest(script,
-                List.of(SCENE_ARGUMENT, sceneFile.toString(), TEMPLATE_ARGUMENT, template.toString()),
+                List.of(SCENE_ARGUMENT, sceneFile.toString(),
+                        ENGINE_ARGUMENT, renderWorkspace.engine().toString(),
+                        TEMPLATES_ARGUMENT, renderWorkspace.templates().toString(),
+                        RENDER_ID_ARGUMENT, job.id().toString()),
                 request.timeout()));
 
         if (!execution.isSuccessful()) {

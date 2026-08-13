@@ -1,8 +1,8 @@
 package com.physicsfactory.infrastructure.config;
 
 import com.physicsfactory.application.port.BlenderProcessRunner;
+import com.physicsfactory.application.port.BlenderRuntimeLibrary;
 import com.physicsfactory.application.port.BlenderScriptLibrary;
-import com.physicsfactory.application.port.BlenderTemplateLibrary;
 import com.physicsfactory.application.port.DirectoryProvisioner;
 import com.physicsfactory.application.port.ExecutableProbe;
 import com.physicsfactory.application.port.SceneContractWriter;
@@ -16,8 +16,8 @@ import com.physicsfactory.application.usecase.ValidateBlenderInstallation;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderWorkspace;
 import com.physicsfactory.domain.model.WorkspaceLayout;
+import com.physicsfactory.infrastructure.blender.ClasspathBlenderRuntimeLibrary;
 import com.physicsfactory.infrastructure.blender.ClasspathBlenderScriptLibrary;
-import com.physicsfactory.infrastructure.blender.ClasspathBlenderTemplateLibrary;
 import com.physicsfactory.infrastructure.blender.JacksonSceneContractWriter;
 import com.physicsfactory.infrastructure.blender.ProcessBlenderRunner;
 import com.physicsfactory.infrastructure.bootstrap.BlenderHealthcheckRunner;
@@ -34,7 +34,6 @@ import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 
@@ -91,9 +90,9 @@ class BootstrapConfiguration {
     }
 
     @Bean
-    BlenderTemplateLibrary blenderTemplateLibrary(RenderWorkspace renderWorkspace) {
-        return new ClasspathBlenderTemplateLibrary(renderWorkspace,
-                new DefaultResourceLoader(ClasspathBlenderTemplateLibrary.class.getClassLoader()));
+    BlenderRuntimeLibrary blenderRuntimeLibrary(RenderWorkspace renderWorkspace) {
+        return new ClasspathBlenderRuntimeLibrary(renderWorkspace,
+                new PathMatchingResourcePatternResolver(ClasspathBlenderRuntimeLibrary.class.getClassLoader()));
     }
 
     @Bean
@@ -139,13 +138,13 @@ class BootstrapConfiguration {
     }
 
     @Bean
-    RenderScene renderScene(BlenderTemplateLibrary blenderTemplateLibrary,
+    RenderScene renderScene(BlenderRuntimeLibrary blenderRuntimeLibrary,
                             BlenderScriptLibrary blenderScriptLibrary,
                             SceneContractWriter sceneContractWriter,
                             BlenderProcessRunner blenderProcessRunner,
                             RenderWorkspace renderWorkspace,
                             WorkspaceLayout workspaceLayout) {
-        return new RenderScene(blenderTemplateLibrary, blenderScriptLibrary, sceneContractWriter,
+        return new RenderScene(blenderRuntimeLibrary, blenderScriptLibrary, sceneContractWriter,
                 blenderProcessRunner, renderWorkspace, workspaceLayout.root());
     }
 

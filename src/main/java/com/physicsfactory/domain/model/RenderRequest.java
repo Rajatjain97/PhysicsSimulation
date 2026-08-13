@@ -18,7 +18,9 @@ import java.util.regex.Pattern;
  */
 public record RenderRequest(String template, Path outputFile, Duration timeout) {
 
-    private static final Pattern TEMPLATE_NAME = Pattern.compile("[a-z0-9]+(?:[-_][a-z0-9]+)*");
+    // Template names are identifiers such as 'DefaultSphere' or 'healthcheck'. Letters, digits, '-'
+    // and '_' only, so a name can never carry a path segment into a script or template lookup.
+    private static final Pattern TEMPLATE_NAME = Pattern.compile("[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*");
 
     public RenderRequest {
         Objects.requireNonNull(template, "template must not be null");
@@ -26,7 +28,7 @@ public record RenderRequest(String template, Path outputFile, Duration timeout) 
         Objects.requireNonNull(timeout, "timeout must not be null");
         if (!TEMPLATE_NAME.matcher(template).matches()) {
             throw new InvalidSceneContractException("Template name '" + template
-                    + "' is invalid: use lower case letters, digits, '-' and '_' only.");
+                    + "' is invalid: use letters, digits, '-' and '_' only.");
         }
         if (outputFile.isAbsolute()) {
             throw new InvalidSceneContractException("Output file '" + outputFile

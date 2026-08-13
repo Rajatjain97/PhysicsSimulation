@@ -21,6 +21,7 @@ public final class WorkspaceLayouts {
         paths.put(WorkspaceDirectory.IMAGE_OUTPUT, "output/renders");
         paths.put(WorkspaceDirectory.LOGS, "logs");
         paths.put(WorkspaceDirectory.BLENDER_SCRIPTS, "blender/scripts");
+        paths.put(WorkspaceDirectory.BLENDER_ENGINE, "blender/engine");
         paths.put(WorkspaceDirectory.BLENDER_TEMPLATES, "blender/templates");
         paths.put(WorkspaceDirectory.BLENDER_RENDERS, "blender/renders");
         paths.put(WorkspaceDirectory.BLENDER_CACHE, "blender/cache");

@@ -4,8 +4,6 @@ import com.physicsfactory.application.usecase.RenderScene;
 import com.physicsfactory.domain.exception.BlenderExecutionException;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderResult;
-import com.physicsfactory.domain.model.SceneObject;
-import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +13,9 @@ import org.springframework.boot.ApplicationRunner;
 /**
  * Renders the demo scene when the application is started with {@code --render}.
  *
- * <p>The first end-to-end proof that the pipeline works: one sphere, one PNG. The scene is described
- * here rather than in configuration because it is a fixed demonstration, not something an operator
- * tunes; when real scene generation arrives it replaces this runner rather than extending it.
+ * <p>Renders whichever template {@code physics-factory.render.template} names. The runner knows
+ * nothing about what that template builds - swapping {@code DefaultSphere} for a future
+ * {@code MarbleArena} is a configuration change, not a code change.
  *
  * <p>Runs after {@link EnvironmentBootstrapRunner}, which installs the render script.
  */
@@ -41,8 +39,8 @@ public final class SceneRenderRunner implements ApplicationRunner {
         if (!args.containsOption(RENDER_OPTION)) {
             return;
         }
-        log.info("Rendering...");
-        RenderResult result = renderScene.execute(renderRequest, List.of(SceneObject.sphereAtOrigin()));
+        log.info("Rendering template '{}'...", renderRequest.template());
+        RenderResult result = renderScene.execute(renderRequest);
 
         if (!result.isSuccessful()) {
             throw new BlenderExecutionException(

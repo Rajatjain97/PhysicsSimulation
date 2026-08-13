@@ -30,6 +30,9 @@ physics-factory:
       # The render workspace. Everything below blender/ belongs to the render engine and can be
       # deleted without losing a deliverable; output/ holds what the user actually wants.
       blender-scripts: blender/scripts
+      # The engine directory must keep the name 'engine': it is imported as a Python package by
+      # render_scene.py and by every template module.
+      blender-engine: blender/engine
       blender-templates: blender/templates
       blender-renders: blender/renders
       blender-cache: blender/cache
@@ -48,9 +51,10 @@ physics-factory:
       template: healthcheck
       output-file: output/videos/healthcheck.mp4
       timeout: 2m
-  # The scene rendered by '--render': the project's first end-to-end image.
+  # The scene rendered by '--render'. 'template' is resolved by the template registry inside Blender;
+  # adding a template module under src/main/resources/blender/templates is all a new scene needs.
   render:
-    template: default
+    template: DefaultSphere
     output-image: output/renders/demo.png
     timeout: 5m
 

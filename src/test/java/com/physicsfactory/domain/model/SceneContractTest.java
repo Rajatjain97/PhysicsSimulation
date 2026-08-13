@@ -6,58 +6,54 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.physicsfactory.domain.exception.InvalidSceneContractException;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class SceneContractTest {
 
     @Test
     void isBuiltFromARenderRequestAtTheCurrentVersion() {
-        RenderRequest request = new RenderRequest("healthcheck", Path.of("output", "videos", "demo.mp4"),
-                Duration.ofMinutes(2));
+        RenderRequest request = new RenderRequest("DefaultSphere", Path.of("output", "renders", "demo.png"),
+                Duration.ofMinutes(5));
 
         SceneContract contract = SceneContract.forRequest(request);
 
-        assertThat(contract.sceneVersion()).isEqualTo(SceneContract.CURRENT_VERSION);
-        assertThat(contract.template()).isEqualTo("healthcheck");
-        assertThat(contract.output().image()).isEqualTo("output/videos/demo.mp4");
-        assertThat(contract.objects()).isEmpty();
-    }
-
-    @Test
-    void carriesTheObjectsBlenderShouldPlace() {
-        RenderRequest request = new RenderRequest("default", Path.of("output", "renders", "demo.png"),
-                Duration.ofMinutes(5));
-
-        SceneContract contract = SceneContract.forRequest(request, List.of(SceneObject.sphereAtOrigin()));
-
+        assertThat(contract.schemaVersion()).isEqualTo(SceneContract.CURRENT_VERSION);
+        assertThat(contract.template()).isEqualTo("DefaultSphere");
         assertThat(contract.output().image()).isEqualTo("output/renders/demo.png");
-        assertThat(contract.objects()).containsExactly(new SceneObject("sphere", List.of(0.0, 0.0, 0.0)));
+        assertThat(contract.parameters()).isEmpty();
     }
 
     @Test
     void alwaysWritesForwardSlashesSoTheContractIsPortable() {
-        RenderRequest request = new RenderRequest("marbles", Path.of("output").resolve("videos").resolve("a.mp4"),
-                Duration.ofMinutes(1));
+        RenderRequest request = new RenderRequest("DefaultSphere",
+                Path.of("output").resolve("renders").resolve("a.png"), Duration.ofMinutes(1));
 
-        assertThat(SceneContract.forRequest(request).output().image()).isEqualTo("output/videos/a.mp4");
+        assertThat(SceneContract.forRequest(request).output().image()).isEqualTo("output/renders/a.png");
+    }
+
+    @Test
+    void carriesTemplateParametersWithoutInterpretingThem() {
+        SceneContract contract = new SceneContract("1.0", "DefaultSphere", Map.of("background", "white"),
+                new SceneOutput("output/renders/demo.png"));
+
+        assertThat(contract.parameters()).containsEntry("background", "white");
+        assertThatThrownBy(() -> contract.parameters().put("tint", "red"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
     void rejectsDocumentsThatBreakTheContract() {
-        SceneOutput output = new SceneOutput("output/videos/demo.mp4");
+        SceneOutput output = new SceneOutput("output/renders/demo.png");
 
-        assertThatThrownBy(() -> new SceneContract(0, "healthcheck", output, List.of()))
+        assertThatThrownBy(() -> new SceneContract(" ", "DefaultSphere", Map.of(), output))
                 .isInstanceOf(InvalidSceneContractException.class)
-                .hasMessageContaining("sceneVersion");
-        assertThatThrownBy(() -> new SceneContract(1, "  ", output, List.of()))
+                .hasMessageContaining("schemaVersion");
+        assertThatThrownBy(() -> new SceneContract("1.0", "  ", Map.of(), output))
                 .isInstanceOf(InvalidSceneContractException.class)
                 .hasMessageContaining("template");
         assertThatThrownBy(() -> new SceneOutput(""))
                 .isInstanceOf(InvalidSceneContractException.class)
                 .hasMessageContaining("output.image");
-        assertThatThrownBy(() -> new SceneObject("sphere", List.of(0.0, 0.0)))
-                .isInstanceOf(InvalidSceneContractException.class)
-                .hasMessageContaining("coordinates");
     }
 }

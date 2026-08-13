@@ -30,10 +30,13 @@ public enum WorkspaceDirectory {
     /** Application log files. */
     LOGS,
 
-    /** Blender Python scripts, installed from the classpath on startup. */
+    /** Blender Python entry point scripts, installed from the classpath on startup. */
     BLENDER_SCRIPTS,
 
-    /** Reusable .blend scene templates. */
+    /** The Blender-side rendering engine: registry, scene builder, renderer, template interface. */
+    BLENDER_ENGINE,
+
+    /** Template modules, one directory per template. */
     BLENDER_TEMPLATES,
 
     /** Blender's own render output, before it becomes a deliverable. */
