@@ -31,6 +31,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
+    // Scene contracts are the JSON agreement with Blender. Jackson databind on its own, rather than
+    // spring-boot-starter-json: the contract writer configures its own mapper so the format cannot
+    // change when somebody tunes a shared one.
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

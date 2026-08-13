@@ -15,6 +15,12 @@ out/
 /configs/
 /output/
 /logs/
+# The render workspace. blender/scripts is installed from the classpath on every start.
+/blender/
+
+### Python ###
+__pycache__/
+*.pyc
 
 ### OS ###
 .DS_Store

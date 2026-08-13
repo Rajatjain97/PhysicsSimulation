@@ -48,6 +48,7 @@ public final class LoggingStartupReporter implements StartupReporter {
             logValue("  " + directory.getKey().configKey(), directory.getValue().toString());
         }
         logValue("Directories created", describeCreatedDirectories(report.workspace().createdDirectories()));
+        logValue("Blender scripts", describeInstalledScripts(report.installedScripts()));
         log.info(SEPARATOR);
     }
 
@@ -60,5 +61,14 @@ public final class LoggingStartupReporter implements StartupReporter {
             return "none (workspace already provisioned)";
         }
         return created.size() + " (" + created.stream().map(Path::toString).collect(Collectors.joining(", ")) + ")";
+    }
+
+    private static String describeInstalledScripts(List<Path> scripts) {
+        if (scripts.isEmpty()) {
+            return "none";
+        }
+        return scripts.size() + " (" + scripts.stream()
+                .map(script -> script.getFileName().toString())
+                .collect(Collectors.joining(", ")) + ")";
     }
 }

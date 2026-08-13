@@ -1,5 +1,6 @@
 package com.physicsfactory.infrastructure.diagnostics;
 
+import com.physicsfactory.domain.exception.BlenderIntegrationException;
 import com.physicsfactory.domain.exception.StartupValidationException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -17,6 +18,9 @@ public final class StartupExitCodeMapper implements ExitCodeExceptionMapper {
     /** The environment is not usable: workspace or Blender validation failed. */
     public static final int ENVIRONMENT_NOT_READY = 2;
 
+    /** Blender was reachable but the invocation failed, timed out, or produced nothing usable. */
+    public static final int BLENDER_INTEGRATION_FAILURE = 3;
+
     /** Anything else. Matches Spring Boot's default failure exit code. */
     public static final int UNEXPECTED_FAILURE = 1;
 
@@ -28,6 +32,9 @@ public final class StartupExitCodeMapper implements ExitCodeExceptionMapper {
         for (Throwable current = exception; current != null && visited.add(current); current = current.getCause()) {
             if (current instanceof StartupValidationException) {
                 return ENVIRONMENT_NOT_READY;
+            }
+            if (current instanceof BlenderIntegrationException) {
+                return BLENDER_INTEGRATION_FAILURE;
             }
         }
         return UNEXPECTED_FAILURE;

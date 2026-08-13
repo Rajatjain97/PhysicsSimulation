@@ -3,6 +3,8 @@ package com.physicsfactory;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.physicsfactory.application.usecase.BootstrapEnvironment;
+import com.physicsfactory.application.usecase.RunBlenderHealthcheck;
+import com.physicsfactory.domain.model.RenderWorkspace;
 import com.physicsfactory.domain.model.WorkspaceDirectory;
 import com.physicsfactory.domain.model.WorkspaceLayout;
 import com.physicsfactory.infrastructure.config.PhysicsFactoryProperties;
@@ -22,11 +24,13 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
- * End to end check of Story 1.1: booting the application against a temporary workspace and a fake
- * Blender binary must provision every directory and wire the bootstrap use case.
+ * End to end check of startup: booting the application against a temporary workspace and a fake
+ * Blender binary must provision every directory, install the bundled Blender scripts, and wire the
+ * use cases.
  *
  * <p>Spring Boot invokes {@code ApplicationRunner} beans when the test context is created, so
- * asserting on the filesystem afterwards exercises the real startup path.
+ * asserting on the filesystem afterwards exercises the real startup path. No Blender is needed: the
+ * fake executable is never run, because nothing here asks Blender to do anything.
  */
 @SpringBootTest
 class PhysicsFactoryApplicationTests {
@@ -43,6 +47,12 @@ class PhysicsFactoryApplicationTests {
 
     @Autowired
     private BootstrapEnvironment bootstrapEnvironment;
+
+    @Autowired
+    private RenderWorkspace renderWorkspace;
+
+    @Autowired
+    private RunBlenderHealthcheck runBlenderHealthcheck;
 
     @DynamicPropertySource
     static void applicationProperties(DynamicPropertyRegistry registry) {
@@ -70,8 +80,22 @@ class PhysicsFactoryApplicationTests {
     }
 
     @Test
-    void wiresTheBootstrapUseCase() {
+    void keepsTheRenderWorkspaceApartFromTheDeliverableFolders() {
+        assertThat(renderWorkspace.directories())
+                .allSatisfy(directory -> assertThat(directory).isDirectory().startsWith(WORKSPACE_ROOT.resolve("blender")));
+        assertThat(workspaceLayout.pathOf(WorkspaceDirectory.VIDEO_OUTPUT)
+                .startsWith(WORKSPACE_ROOT.resolve("blender"))).isFalse();
+    }
+
+    @Test
+    void installsTheBundledBlenderScriptsDuringStartup() {
+        assertThat(renderWorkspace.scripts().resolve("healthcheck.py")).isRegularFile();
+    }
+
+    @Test
+    void wiresTheBootstrapAndBlenderUseCases() {
         assertThat(bootstrapEnvironment).isNotNull();
+        assertThat(runBlenderHealthcheck).isNotNull();
     }
 
     @AfterAll

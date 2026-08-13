@@ -9,6 +9,7 @@ import com.physicsfactory.application.usecase.ValidateBlenderInstallation;
 import com.physicsfactory.domain.exception.BlenderNotFoundException;
 import com.physicsfactory.domain.model.WorkspaceLayout;
 import com.physicsfactory.support.FixedExecutableProbe;
+import com.physicsfactory.support.InMemoryBlenderScriptLibrary;
 import com.physicsfactory.support.RecordingDirectoryProvisioner;
 import com.physicsfactory.support.RecordingStartupReporter;
 import com.physicsfactory.support.WorkspaceLayouts;
@@ -54,7 +55,7 @@ class EnvironmentBootstrapRunnerTest {
                                                      WorkspaceLayout layout,
                                                      String blenderLocation) {
         BootstrapEnvironment bootstrapEnvironment = new BootstrapEnvironment(new PrepareWorkspace(provisioner),
-                new ValidateBlenderInstallation(probe), reporter);
+                InMemoryBlenderScriptLibrary.empty(), new ValidateBlenderInstallation(probe), reporter);
         return new EnvironmentBootstrapRunner(bootstrapEnvironment, layout, blenderLocation);
     }
 }

@@ -26,6 +26,12 @@ physics-factory:
       video-output: output/videos
       thumbnail-output: output/thumbnails
       logs: logs
+      # The render workspace. Everything below blender/ belongs to the render engine and can be
+      # deleted without losing a deliverable; output/ holds what the user actually wants.
+      blender-scripts: blender/scripts
+      blender-templates: blender/templates
+      blender-renders: blender/renders
+      blender-cache: blender/cache
   blender:
     # Absolute path, a path relative to the workspace root, or a bare program name resolved on PATH.
     # Examples:
@@ -33,6 +39,14 @@ physics-factory:
     #   Linux   /usr/bin/blender
     #   Windows C:/Program Files/Blender Foundation/Blender 4.2/blender.exe
     executable-path: ${BLENDER_EXECUTABLE:blender}
+    # How long 'blender --version' may take. Blender loads its whole runtime even for this.
+    version-timeout: 30s
+    # The job run by '--healthcheck'. It proves the integration works; it renders nothing, so
+    # output-file only documents where the template would write once rendering exists.
+    healthcheck:
+      template: healthcheck
+      output-file: output/videos/healthcheck.mp4
+      timeout: 2m
 
 logging:
   level:

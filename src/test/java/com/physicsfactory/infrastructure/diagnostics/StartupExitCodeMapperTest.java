@@ -3,6 +3,8 @@ package com.physicsfactory.infrastructure.diagnostics;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.physicsfactory.domain.exception.BlenderNotFoundException;
+import com.physicsfactory.domain.exception.ScriptNotFoundException;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 class StartupExitCodeMapperTest {
@@ -21,6 +23,15 @@ class StartupExitCodeMapperTest {
                 new BlenderNotFoundException("blender"));
 
         assertThat(mapper.getExitCode(wrapped)).isEqualTo(StartupExitCodeMapper.ENVIRONMENT_NOT_READY);
+    }
+
+    @Test
+    void mapsBlenderIntegrationFailuresToTheirOwnExitCode() {
+        assertThat(mapper.getExitCode(new ScriptNotFoundException("healthcheck.py", Path.of("blender/scripts"))))
+                .isEqualTo(StartupExitCodeMapper.BLENDER_INTEGRATION_FAILURE);
+        assertThat(mapper.getExitCode(new IllegalStateException("Failed to execute ApplicationRunner",
+                new ScriptNotFoundException("healthcheck.py", Path.of("blender/scripts")))))
+                .isEqualTo(StartupExitCodeMapper.BLENDER_INTEGRATION_FAILURE);
     }
 
     @Test

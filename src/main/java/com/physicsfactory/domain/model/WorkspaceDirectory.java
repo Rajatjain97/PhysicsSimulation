@@ -25,7 +25,19 @@ public enum WorkspaceDirectory {
     THUMBNAIL_OUTPUT,
 
     /** Application log files. */
-    LOGS;
+    LOGS,
+
+    /** Blender Python scripts, installed from the classpath on startup. */
+    BLENDER_SCRIPTS,
+
+    /** Reusable .blend scene templates. */
+    BLENDER_TEMPLATES,
+
+    /** Blender's own render output, before it becomes a deliverable. */
+    BLENDER_RENDERS,
+
+    /** Scene contracts and other short-lived files handed to Blender. */
+    BLENDER_CACHE;
 
     /**
      * The relaxed, kebab-case key used for this directory in configuration files, for example
