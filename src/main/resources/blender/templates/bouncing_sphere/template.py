@@ -20,7 +20,7 @@ import math
 
 import bpy
 
-from engine.template_api import RenderSettings, Template, TemplateContext, frames_for
+from engine.template_api import RenderSettings, Template, TemplateContext
 
 DEFAULT_DURATION_SECONDS = 10.0
 DEFAULT_DROP_HEIGHT = 5.0
@@ -28,6 +28,7 @@ DEFAULT_BOUNCE = 0.72
 DEFAULT_MATERIAL = "DefaultGlass"
 DEFAULT_GROUND_MATERIAL = "DefaultMetal"
 
+SPHERE_NAME = "BouncingSphere"
 SPHERE_RADIUS = 0.6
 FPS = 60
 RENDER_SAMPLES = 32
@@ -72,6 +73,9 @@ class BouncingSphereTemplate(Template):
         # restitution, which is what the 'bounce' parameter means.
         body.restitution = 1.0
         body.friction = 0.8
+        # Bullet resolves contacts inside a margin, and the 4cm default absorbs most of a bounce.
+        body.use_margin = True
+        body.collision_margin = 0.001
 
     def create_objects(self, context: TemplateContext) -> None:
         drop_height = _positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT)
@@ -82,7 +86,7 @@ class BouncingSphereTemplate(Template):
         bpy.ops.mesh.primitive_uv_sphere_add(
             radius=SPHERE_RADIUS, location=(0.0, 0.0, drop_height), segments=64, ring_count=32)
         sphere = bpy.context.active_object
-        sphere.name = "BouncingSphere"
+        sphere.name = SPHERE_NAME
         bpy.ops.object.shade_smooth()
         sphere.data.materials.append(
             context.assets.materials.resolve(str(context.parameter("material", DEFAULT_MATERIAL))))
@@ -93,6 +97,8 @@ class BouncingSphereTemplate(Template):
         body.mass = 1.0
         body.restitution = bounce
         body.friction = 0.4
+        body.use_margin = True
+        body.collision_margin = 0.001
         # A little damping so the reel ends in stillness rather than jittering forever.
         body.linear_damping = 0.04
         body.angular_damping = 0.1
@@ -130,7 +136,14 @@ class BouncingSphereTemplate(Template):
         scene = bpy.context.scene
         scene.render.film_transparent = False
 
-        frames = self._frames(context)
+        settings = self.render_settings(context)
+        frames = settings.frames
+
+        # The solver's timestep is one scene frame, so the frame rate has to be right *before* the
+        # simulation runs. Resetting the scene put it back to Blender's default 24; simulating at 24
+        # and playing back at 60 made the whole reel run two and a half times too fast.
+        scene.render.fps = settings.fps
+        scene.render.fps_base = 1.0
         scene.frame_start = 1
         scene.frame_end = frames
 
@@ -142,7 +155,7 @@ class BouncingSphereTemplate(Template):
         world.point_cache.frame_start = 1
         world.point_cache.frame_end = frames
 
-        _simulate(scene, frames)
+        _simulate(scene, frames, SPHERE_NAME)
 
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         # EEVEE, not Cycles: a ten second reel is 600 frames, and this has to finish on a laptop.
@@ -150,30 +163,36 @@ class BouncingSphereTemplate(Template):
                               duration_seconds=_positive_number(context, "durationSeconds",
                                                                 DEFAULT_DURATION_SECONDS))
 
-    @staticmethod
-    def _frames(context: TemplateContext) -> int:
-        return frames_for(_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS), FPS)
-
 
 def _ensure_rigid_body_world(scene) -> None:
     if scene.rigidbody_world is None:
         bpy.ops.rigidbody.world_add()
 
 
-def _simulate(scene, frames: int) -> None:
-    """Runs the whole simulation before the first frame is rendered.
+def _simulate(scene, frames: int, tracked_name: str) -> None:
+    """Runs the whole simulation before the first frame is rendered, and reports the trajectory.
 
     Rendering in background mode does not reliably step a rigid body solver: every frame comes out
     with the object frozen at its starting transform, which looks like a still image ten seconds
     long. Walking the timeline here evaluates the solver frame by frame and fills the point cache, so
     the render afterwards just reads out the motion.
 
-    It costs about a second for one sphere, and any future physics template needs the same thing.
+    The trajectory summary is printed because a render is a slow way to discover that the physics was
+    wrong. Apex heights that fall away towards a resting height are what a good bounce looks like.
     """
+    tracked = bpy.data.objects.get(tracked_name)
+    heights = []
     for frame in range(scene.frame_start, frames + 1):
         scene.frame_set(frame)
+        if tracked is not None:
+            heights.append(round(tracked.matrix_world.translation.z, 3))
     scene.frame_set(scene.frame_start)
-    print("physics.simulated={0}".format(frames))
+
+    apexes = [heights[i] for i in range(1, len(heights) - 1)
+              if heights[i] > heights[i - 1] and heights[i] >= heights[i + 1]]
+    print("physics.simulated={0} start={1} rest={2} bounces={3} apexes={4}".format(
+        frames, heights[0] if heights else "?", heights[-1] if heights else "?",
+        len(apexes), apexes[:5]))
 
 
 def _add_area_light(name: str, energy: float, size: float, location: tuple, rotation: tuple) -> None:
