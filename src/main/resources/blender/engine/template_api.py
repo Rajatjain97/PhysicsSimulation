@@ -119,13 +119,20 @@ class Template(abc.ABC):
     def configure_environment(self, context: TemplateContext) -> None:
         """Reset the scene and set up world, background and backdrop."""
 
-    @abc.abstractmethod
     def create_objects(self, context: TemplateContext) -> None:
-        """Create the content of the scene."""
+        """Create the content of the scene.
 
-    @abc.abstractmethod
+        Optional: a template that describes its objects in :meth:`timeline` leaves this alone and
+        lets the scene director spawn them.
+        """
+        return None
+
     def configure_camera(self, context: TemplateContext) -> None:
-        """Place and frame the camera."""
+        """Place and frame the camera.
+
+        Optional, for the same reason as :meth:`create_objects` - a camera preset event does it.
+        """
+        return None
 
     @abc.abstractmethod
     def configure_lighting(self, context: TemplateContext) -> None:

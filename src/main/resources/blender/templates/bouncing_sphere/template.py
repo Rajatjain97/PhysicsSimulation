@@ -11,9 +11,9 @@ Parameters (all optional):
     material         shared material for the sphere, default "DefaultGlass"
     groundMaterial   shared material for the floor, default "DefaultMetal"
 
-The camera framing is derived from dropHeight, so changing the drop does not push the sphere out of
-frame. That is the whole parameterisation: a future story can generate a reel by naming a height, a
-bounce and a material, and nothing in Blender or Java has to change.
+The template describes the reel and nothing else: what to spawn, how to frame it, when physics
+starts, how long it runs. The scene director carries that out. What is left here is the environment
+and the lighting, which have no event kinds yet.
 """
 
 import math
@@ -21,7 +21,6 @@ from dataclasses import dataclass
 
 import bpy
 
-from engine.physics import MESH, SPHERE, RigidBodyPhysics
 from engine.timeline import CAMERA_PRESET, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
 from engine.template_api import RenderSettings, Template, TemplateContext
 
@@ -34,14 +33,10 @@ DEFAULT_GROUND_MATERIAL = "DefaultMetal"
 SPHERE_NAME = "BouncingSphere"
 GROUND_NAME = "Ground"
 SPHERE_RADIUS = 0.6
+GROUND_SIZE = 60.0
 FPS = 60
 RENDER_SAMPLES = 32
 
-CAMERA_DISTANCE = 9.0
-SENSOR_HALF_WIDTH = 18.0
-MIN_LENS = 24.0
-MAX_LENS = 85.0
-VERTICAL_MARGIN = 1.8
 
 
 @dataclass(frozen=True)
@@ -83,39 +78,7 @@ class BouncingSphereTemplate(Template):
             background.inputs[1].default_value = 1.0
         scene.world = world
 
-        bpy.ops.mesh.primitive_plane_add(size=60.0, location=(0.0, 0.0, 0.0))
-        ground = bpy.context.active_object
-        ground.name = GROUND_NAME
-        ground.data.materials.append(context.assets.materials.resolve(_plan(context).ground_material))
-
-        RigidBodyPhysics(scene).add_static(ground, shape=MESH)
-
-    def create_objects(self, context: TemplateContext) -> None:
-        plan = _plan(context)
-
-        bpy.ops.mesh.primitive_uv_sphere_add(
-            radius=SPHERE_RADIUS, location=(0.0, 0.0, plan.drop_height), segments=64, ring_count=32)
-        sphere = bpy.context.active_object
-        sphere.name = SPHERE_NAME
-        bpy.ops.object.shade_smooth()
-        sphere.data.materials.append(context.assets.materials.resolve(plan.material))
-
-        RigidBodyPhysics(bpy.context.scene).add_dynamic(sphere, shape=SPHERE,
-                                                        preset_name=plan.physics_preset)
-
-    def configure_camera(self, context: TemplateContext) -> None:
-        # Frame the whole fall: the sphere's starting point, the floor, and a little air around both.
-        coverage = _plan(context).drop_height + SPHERE_RADIUS + VERTICAL_MARGIN
-        lens = min(MAX_LENS, max(MIN_LENS, (2.0 * SENSOR_HALF_WIDTH * CAMERA_DISTANCE) / coverage))
-
-        scene = bpy.context.scene
-        camera_data = bpy.data.cameras.new("StudioCamera")
-        camera_data.lens = lens
-        camera = bpy.data.objects.new("StudioCamera", camera_data)
-        camera.location = (0.0, -CAMERA_DISTANCE, coverage / 2.0 - 0.6)
-        camera.rotation_euler = (math.radians(87.0), 0.0, 0.0)
-        scene.collection.objects.link(camera)
-        scene.camera = camera
+        scene.render.film_transparent = False
 
     def configure_lighting(self, context: TemplateContext) -> None:
         _add_area_light("KeyLight", energy=2400.0, size=8.0,
@@ -127,14 +90,6 @@ class BouncingSphereTemplate(Template):
         # Straight down onto the impact point, so the contact with the floor is unmistakable.
         _add_area_light("ContactLight", energy=900.0, size=4.0,
                         location=(0.0, -1.2, 6.0), rotation=(0.0, 0.0, 0.0))
-
-    def prepare_for_rendering(self, context: TemplateContext) -> None:
-        scene = bpy.context.scene
-        scene.render.film_transparent = False
-
-        # The reel's duration is the single source of truth for the simulation length.
-        settings = self.render_settings(context)
-        RigidBodyPhysics(scene).simulate(settings.frames, settings.fps, tracked_name=SPHERE_NAME)
 
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         # EEVEE, not Cycles: a ten second reel is 600 frames, and this has to finish on a laptop.
@@ -149,11 +104,12 @@ class BouncingSphereTemplate(Template):
         """
         plan = _plan(context)
         timeline = Timeline()
-        timeline.add(SPAWN_OBJECT, at=0.0, name=GROUND_NAME, shape="plane",
+        timeline.add(SPAWN_OBJECT, at=0.0, name=GROUND_NAME, shape="plane", size=GROUND_SIZE,
                      material=plan.ground_material, physics="static")
         timeline.add(SPAWN_OBJECT, at=0.0, name=SPHERE_NAME, shape="sphere",
                      radius=SPHERE_RADIUS, height=plan.drop_height, material=plan.material)
-        timeline.add(CAMERA_PRESET, at=0.0, framing="portrait-drop", covers=plan.drop_height)
+        timeline.add(CAMERA_PRESET, at=0.0, framing="portrait-drop",
+                     covers=plan.drop_height + SPHERE_RADIUS)
         timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, target=SPHERE_NAME)
         timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
         return timeline

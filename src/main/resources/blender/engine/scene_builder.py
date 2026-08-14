@@ -13,6 +13,7 @@ logs them and asserts on them.
 from .asset_registry import AssetRegistry
 from .render_manifest import write_manifest
 from .renderer import Renderer
+from .scene_director import SceneDirector
 from .scene_contract import SceneContract
 from .template_api import TemplateContext
 from .template_registry import TemplateRegistry
@@ -32,18 +33,21 @@ class SceneBuilder:
 
         context = TemplateContext(parameters=dict(contract.parameters), assets=self._assets)
 
-        # The template's own account of what happens and when. Recorded, not executed: build() still
-        # does the work, and running the timeline is a later story.
+        settings = descriptor.template.render_settings(context)
+
+        # A template describes what happens; the director carries it out. build() runs first because
+        # it establishes the environment - including resetting the scene - that events land in.
+        descriptor.template.build(context)
+
         timeline = descriptor.template.timeline(context)
         if not timeline.is_empty():
             print("render.timeline=" + timeline.summary())
-
-        descriptor.template.build(context)
+            directed = SceneDirector(self._assets, settings).direct(timeline)
+            print("render.directed=" + str(directed))
         materials = self._assets.materials.resolved_names()
         print("render.materials=" + (",".join(materials) or "(none)"))
         print("render.scene=built")
 
-        settings = descriptor.template.render_settings(context)
         outcome = self._renderer.render(settings, contract.output_path)
         print("render.resolution=" + outcome.resolution)
         print("render.fps=" + str(outcome.fps))
