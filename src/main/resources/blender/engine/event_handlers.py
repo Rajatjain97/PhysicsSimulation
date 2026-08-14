@@ -13,6 +13,8 @@ import math
 
 import bpy
 
+from .camera import DEFAULT_PRESET as DEFAULT_CAMERA_PRESET
+from .camera import CameraRequest, place as place_camera
 from .physics import BOX, MESH, SPHERE, RigidBodyPhysics
 from .timeline import CAMERA_PRESET, SPAWN_OBJECT, START_PHYSICS, WAIT
 
@@ -21,6 +23,7 @@ SPHERE_SEGMENTS = 64
 SPHERE_RINGS = 32
 DEFAULT_PLANE_SIZE = 60.0
 DEFAULT_SPHERE_RADIUS = 0.6
+DEFAULT_BOX_SIZE = 2.0
 
 # How a spawned shape collides, once something asks it to take part in physics.
 COLLISION_SHAPES = {
@@ -28,14 +31,6 @@ COLLISION_SHAPES = {
     "box": BOX,
     "plane": MESH,
 }
-
-# Camera framing presets. A preset is a way of composing a shot, named by intent rather than by lens
-# millimetres, so a timeline never carries camera mathematics.
-PORTRAIT_SENSOR_HALF_WIDTH = 18.0
-PORTRAIT_CAMERA_DISTANCE = 9.0
-PORTRAIT_MIN_LENS = 24.0
-PORTRAIT_MAX_LENS = 85.0
-PORTRAIT_MARGIN = 1.8
 
 
 class EventHandlerError(Exception):
@@ -49,24 +44,34 @@ def spawn_object(event, stage) -> None:
     if not name or not shape:
         raise EventHandlerError("A spawn event needs a name and a shape: " + str(event.data))
 
+    location = _location(event.data)
     if shape == "sphere":
         bpy.ops.mesh.primitive_uv_sphere_add(
-            radius=float(event.data.get("radius", DEFAULT_SPHERE_RADIUS)),
-            location=(0.0, 0.0, float(event.data.get("height", 0.0))),
+            radius=float(event.data.get("radius", DEFAULT_SPHERE_RADIUS)), location=location,
             segments=SPHERE_SEGMENTS, ring_count=SPHERE_RINGS)
         bpy.ops.object.shade_smooth()
     elif shape == "plane":
         bpy.ops.mesh.primitive_plane_add(size=float(event.data.get("size", DEFAULT_PLANE_SIZE)),
-                                         location=(0.0, 0.0, float(event.data.get("height", 0.0))))
+                                         location=location)
+    elif shape == "box":
+        bpy.ops.mesh.primitive_cube_add(size=float(event.data.get("size", DEFAULT_BOX_SIZE)),
+                                        location=location)
     else:
         raise EventHandlerError(
             "Unknown shape '{0}'; this engine can spawn: {1}".format(shape, ", ".join(sorted(COLLISION_SHAPES))))
 
     spawned = bpy.context.active_object
     spawned.name = name
-    material = event.data.get("material")
-    if material:
-        spawned.data.materials.append(stage.assets.materials.resolve(str(material)))
+
+    rotation = event.data.get("rotation")
+    if rotation:
+        # Degrees in the timeline: intent stays readable, radians are a Blender detail.
+        spawned.rotation_euler = tuple(math.radians(float(angle)) for angle in rotation)
+    scale = event.data.get("scale")
+    if scale:
+        spawned.scale = tuple(float(axis) for axis in scale)
+
+    _apply_material(spawned, event.data, stage)
 
     # Remembered so a later StartPhysics knows what it is attaching a body to.
     stage.spawned[name] = shape
@@ -76,50 +81,70 @@ def spawn_object(event, stage) -> None:
 
 
 def start_physics(event, stage) -> None:
-    """Makes an object dynamic and simulates the whole reel.
+    """Makes one or many objects dynamic, then simulates the whole reel once.
+
+    A scene with twenty-five marbles is one physics event with twenty-five targets, not twenty-five
+    events: the bodies all have to exist before anything is simulated, and simulating once is the
+    difference between a reel and twenty-five reels.
 
     The simulation length comes from the render settings, so a reel is always simulated for exactly
     as long as it is shown.
     """
-    target_name = event.data.get("target")
-    if not target_name:
-        raise EventHandlerError("A physics event needs a target: " + str(event.data))
-    target = bpy.data.objects.get(target_name)
-    if target is None:
-        raise EventHandlerError("Cannot start physics: nothing called '{0}' was spawned".format(target_name))
+    names = event.data.get("targets") or ([event.data.get("target")] if event.data.get("target") else [])
+    if not names:
+        raise EventHandlerError("A physics event needs a target or targets: " + str(event.data))
 
     physics = RigidBodyPhysics(stage.scene)
-    physics.add_dynamic(target,
-                        shape=_collision_shape(stage.spawned.get(target_name, "sphere")),
-                        preset_name=str(event.data.get("preset", "Bouncy")))
-    physics.simulate(stage.settings.frames, stage.settings.fps, tracked_name=target_name)
+    preset_name = str(event.data.get("preset", "Bouncy"))
+    for target_name in names:
+        target = bpy.data.objects.get(target_name)
+        if target is None:
+            raise EventHandlerError(
+                "Cannot start physics: nothing called '{0}' was spawned".format(target_name))
+        physics.add_dynamic(target,
+                            shape=_collision_shape(stage.spawned.get(target_name, "sphere")),
+                            preset_name=preset_name)
+
+    physics.simulate(stage.settings.frames, stage.settings.fps, tracked_name=names[0])
 
 
 def camera_preset(event, stage) -> None:
-    """Places the camera using a named framing."""
-    framing = str(event.data.get("framing", "portrait-drop"))
-    if framing != "portrait-drop":
-        raise EventHandlerError(
-            "Unknown camera framing '{0}'; this engine knows: portrait-drop".format(framing))
-
-    # Fit the requested vertical extent plus a margin of air, then derive the lens from it.
-    coverage = float(event.data.get("covers", 0.0)) + PORTRAIT_MARGIN
-    lens = min(PORTRAIT_MAX_LENS,
-               max(PORTRAIT_MIN_LENS,
-                   (2.0 * PORTRAIT_SENSOR_HALF_WIDTH * PORTRAIT_CAMERA_DISTANCE) / coverage))
-
-    camera_data = bpy.data.cameras.new("StudioCamera")
-    camera_data.lens = lens
-    camera = bpy.data.objects.new("StudioCamera", camera_data)
-    camera.location = (0.0, -PORTRAIT_CAMERA_DISTANCE, coverage / 2.0 - 0.6)
-    camera.rotation_euler = (math.radians(87.0), 0.0, 0.0)
-    stage.scene.collection.objects.link(camera)
-    stage.scene.camera = camera
+    """Sets up the shot the timeline asked for. The framing itself lives in engine.camera."""
+    request = CameraRequest(
+        preset=str(event.data.get("preset", DEFAULT_CAMERA_PRESET)),
+        covers=float(event.data.get("covers", 0.0)),
+        target=event.data.get("target"),
+        frames=stage.settings.frames,
+        fps=stage.settings.fps,
+        options={key: value for key, value in event.data.items()
+                 if key not in ("preset", "covers", "target")})
+    place_camera(request, stage.scene)
 
 
 def wait(event, stage) -> None:
     """Holds the shot. A render has no clock to wait on - the duration is the reel's length."""
     return None
+
+
+def _location(data) -> tuple:
+    """Either a full position, or just a height for the common case of something on the axis."""
+    location = data.get("location")
+    if location:
+        return tuple(float(axis) for axis in location)
+    return (0.0, 0.0, float(data.get("height", 0.0)))
+
+
+def _apply_material(spawned, data, stage) -> None:
+    material = data.get("material")
+    if not material:
+        return
+    tint = data.get("tint")
+    if tint:
+        resolved = stage.assets.materials.resolve_variant(
+            str(material), str(data.get("tintName", "Tinted")), tint)
+    else:
+        resolved = stage.assets.materials.resolve(str(material))
+    spawned.data.materials.append(resolved)
 
 
 def _collision_shape(shape: str) -> str:

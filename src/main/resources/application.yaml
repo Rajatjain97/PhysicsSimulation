@@ -61,7 +61,8 @@ physics-factory:
     # Hundreds of frames, so this is a render budget rather than a startup timeout.
     timeout: 45m
     # Passed to the template verbatim.
-    #   BouncingSphere: durationSeconds, dropHeight, physicsPreset, material, groundMaterial
+    #   BouncingSphere: durationSeconds, dropHeight, physicsPreset, cameraPreset,
+    #                   material, groundMaterial
     #   DefaultSphere:  material, background
     parameters:
       durationSeconds: 10

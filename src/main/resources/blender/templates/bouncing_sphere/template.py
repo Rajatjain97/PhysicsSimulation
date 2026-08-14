@@ -8,6 +8,8 @@ Parameters (all optional):
     durationSeconds  how long the reel runs, default 10
     dropHeight       height of the sphere's centre at frame 1, in metres, default 5
     physicsPreset    how the sphere behaves on impact: "Bouncy" (default) or "Heavy"
+    cameraPreset     how the reel is shot: "Static" (default), "FollowObject", "Orbit",
+                     "SlowZoom" or "TopDown"
     material         shared material for the sphere, default "DefaultGlass"
     groundMaterial   shared material for the floor, default "DefaultMetal"
 
@@ -27,6 +29,7 @@ from engine.template_api import RenderSettings, Template, TemplateContext
 DEFAULT_DURATION_SECONDS = 10.0
 DEFAULT_DROP_HEIGHT = 5.0
 DEFAULT_PHYSICS_PRESET = "Bouncy"
+DEFAULT_CAMERA_PRESET = "Static"
 DEFAULT_MATERIAL = "DefaultGlass"
 DEFAULT_GROUND_MATERIAL = "DefaultMetal"
 
@@ -46,6 +49,7 @@ class _ScenePlan:
     duration_seconds: float
     drop_height: float
     physics_preset: str
+    camera_preset: str
     material: str
     ground_material: str
 
@@ -55,6 +59,7 @@ def _plan(context: TemplateContext) -> _ScenePlan:
         duration_seconds=_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
         drop_height=_positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT),
         physics_preset=str(context.parameter("physicsPreset", DEFAULT_PHYSICS_PRESET)),
+        camera_preset=str(context.parameter("cameraPreset", DEFAULT_CAMERA_PRESET)),
         material=str(context.parameter("material", DEFAULT_MATERIAL)),
         ground_material=str(context.parameter("groundMaterial", DEFAULT_GROUND_MATERIAL)))
 
@@ -108,8 +113,10 @@ class BouncingSphereTemplate(Template):
                      material=plan.ground_material, physics="static")
         timeline.add(SPAWN_OBJECT, at=0.0, name=SPHERE_NAME, shape="sphere",
                      radius=SPHERE_RADIUS, height=plan.drop_height, material=plan.material)
-        timeline.add(CAMERA_PRESET, at=0.0, framing="portrait-drop",
-                     covers=plan.drop_height + SPHERE_RADIUS)
+        # The camera is described, not configured: which shot, what has to stay in frame, and what
+        # to look at if the shot tracks something.
+        timeline.add(CAMERA_PRESET, at=0.0, preset=plan.camera_preset,
+                     covers=plan.drop_height + SPHERE_RADIUS, target=SPHERE_NAME)
         timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, target=SPHERE_NAME)
         timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
         return timeline

@@ -16,7 +16,7 @@ from typing import Dict, List
 
 import bpy
 
-from .asset_api import MaterialDefinition
+from .asset_api import MaterialDefinition, set_shader_input
 
 MATERIAL_ATTRIBUTE = "MATERIAL"
 
@@ -76,6 +76,29 @@ class MaterialRepository:
             definition.configure(material, _principled_shader(material))
 
         self._resolved[identifier] = material
+        return material
+
+    def resolve_variant(self, identifier: str, variant: str, tint):
+        """Returns a coloured copy of a shared material, created once and reused.
+
+        A scene full of glass marbles wants one glass definition and a handful of colours, not one
+        material definition per colour. The variant keeps the base material's look - its refraction,
+        roughness and IOR all come from the shared definition - and changes only the tint, so a
+        marble is unmistakably DefaultGlass in a particular colour.
+        """
+        key = "{0}:{1}".format(identifier, variant)
+        cached = self._resolved.get(key)
+        if cached is not None and _is_alive(cached):
+            return cached
+
+        material = bpy.data.materials.get(key)
+        if material is None:
+            material = self.resolve(identifier).copy()
+            material.name = key
+            set_shader_input(_principled_shader(material), ("Base Color",),
+                             (float(tint[0]), float(tint[1]), float(tint[2]), 1.0))
+
+        self._resolved[key] = material
         return material
 
     def _definitions(self) -> Dict[str, MaterialDefinition]:
