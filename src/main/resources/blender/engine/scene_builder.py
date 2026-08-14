@@ -31,6 +31,13 @@ class SceneBuilder:
         print("render.template=" + descriptor.name)
 
         context = TemplateContext(parameters=dict(contract.parameters), assets=self._assets)
+
+        # The template's own account of what happens and when. Recorded, not executed: build() still
+        # does the work, and running the timeline is a later story.
+        timeline = descriptor.template.timeline(context)
+        if not timeline.is_empty():
+            print("render.timeline=" + timeline.summary())
+
         descriptor.template.build(context)
         materials = self._assets.materials.resolved_names()
         print("render.materials=" + (",".join(materials) or "(none)"))

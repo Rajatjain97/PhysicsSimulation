@@ -7,7 +7,7 @@ the motion is simulated, which is what makes this the template every future phys
 Parameters (all optional):
     durationSeconds  how long the reel runs, default 10
     dropHeight       height of the sphere's centre at frame 1, in metres, default 5
-    bounce           elasticity of the sphere, 0 dead to 1 perfectly elastic, default 0.72
+    physicsPreset    how the sphere behaves on impact: "Bouncy" (default) or "Heavy"
     material         shared material for the sphere, default "DefaultGlass"
     groundMaterial   shared material for the floor, default "DefaultMetal"
 
@@ -17,18 +17,22 @@ bounce and a material, and nothing in Blender or Java has to change.
 """
 
 import math
+from dataclasses import dataclass
 
 import bpy
 
+from engine.physics import MESH, SPHERE, RigidBodyPhysics
+from engine.timeline import CAMERA_PRESET, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
 from engine.template_api import RenderSettings, Template, TemplateContext
 
 DEFAULT_DURATION_SECONDS = 10.0
 DEFAULT_DROP_HEIGHT = 5.0
-DEFAULT_BOUNCE = 0.72
+DEFAULT_PHYSICS_PRESET = "Bouncy"
 DEFAULT_MATERIAL = "DefaultGlass"
 DEFAULT_GROUND_MATERIAL = "DefaultMetal"
 
 SPHERE_NAME = "BouncingSphere"
+GROUND_NAME = "Ground"
 SPHERE_RADIUS = 0.6
 FPS = 60
 RENDER_SAMPLES = 32
@@ -38,6 +42,26 @@ SENSOR_HALF_WIDTH = 18.0
 MIN_LENS = 24.0
 MAX_LENS = 85.0
 VERTICAL_MARGIN = 1.8
+
+
+@dataclass(frozen=True)
+class _ScenePlan:
+    """The scene's intent, read once from the contract parameters."""
+
+    duration_seconds: float
+    drop_height: float
+    physics_preset: str
+    material: str
+    ground_material: str
+
+
+def _plan(context: TemplateContext) -> _ScenePlan:
+    return _ScenePlan(
+        duration_seconds=_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
+        drop_height=_positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT),
+        physics_preset=str(context.parameter("physicsPreset", DEFAULT_PHYSICS_PRESET)),
+        material=str(context.parameter("material", DEFAULT_MATERIAL)),
+        ground_material=str(context.parameter("groundMaterial", DEFAULT_GROUND_MATERIAL)))
 
 
 class BouncingSphereTemplate(Template):
@@ -61,55 +85,27 @@ class BouncingSphereTemplate(Template):
 
         bpy.ops.mesh.primitive_plane_add(size=60.0, location=(0.0, 0.0, 0.0))
         ground = bpy.context.active_object
-        ground.name = "Ground"
-        ground.data.materials.append(
-            context.assets.materials.resolve(str(context.parameter("groundMaterial", DEFAULT_GROUND_MATERIAL))))
+        ground.name = GROUND_NAME
+        ground.data.materials.append(context.assets.materials.resolve(_plan(context).ground_material))
 
-        _ensure_rigid_body_world(scene)
-        bpy.ops.rigidbody.object_add(type="PASSIVE")
-        body = ground.rigid_body
-        body.collision_shape = "MESH"
-        # The floor keeps all the energy it is given; how much survives an impact is the sphere's
-        # restitution, which is what the 'bounce' parameter means.
-        body.restitution = 1.0
-        body.friction = 0.8
-        # Bullet resolves contacts inside a margin, and the 4cm default absorbs most of a bounce.
-        body.use_margin = True
-        body.collision_margin = 0.001
+        RigidBodyPhysics(scene).add_static(ground, shape=MESH)
 
     def create_objects(self, context: TemplateContext) -> None:
-        drop_height = _positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT)
-        bounce = _number(context, "bounce", DEFAULT_BOUNCE)
-        if not 0.0 <= bounce <= 1.0:
-            raise ValueError("Parameter 'bounce' must be between 0 and 1 but was {0}".format(bounce))
+        plan = _plan(context)
 
         bpy.ops.mesh.primitive_uv_sphere_add(
-            radius=SPHERE_RADIUS, location=(0.0, 0.0, drop_height), segments=64, ring_count=32)
+            radius=SPHERE_RADIUS, location=(0.0, 0.0, plan.drop_height), segments=64, ring_count=32)
         sphere = bpy.context.active_object
         sphere.name = SPHERE_NAME
         bpy.ops.object.shade_smooth()
-        sphere.data.materials.append(
-            context.assets.materials.resolve(str(context.parameter("material", DEFAULT_MATERIAL))))
+        sphere.data.materials.append(context.assets.materials.resolve(plan.material))
 
-        bpy.ops.rigidbody.object_add(type="ACTIVE")
-        body = sphere.rigid_body
-        body.collision_shape = "SPHERE"
-        body.mass = 1.0
-        body.restitution = bounce
-        body.friction = 0.4
-        body.use_margin = True
-        body.collision_margin = 0.001
-        # A little damping so the reel ends in stillness rather than jittering forever.
-        body.linear_damping = 0.04
-        body.angular_damping = 0.1
-        body.use_deactivation = True
-        body.deactivate_linear_velocity = 0.08
-        body.deactivate_angular_velocity = 0.08
+        RigidBodyPhysics(bpy.context.scene).add_dynamic(sphere, shape=SPHERE,
+                                                        preset_name=plan.physics_preset)
 
     def configure_camera(self, context: TemplateContext) -> None:
-        drop_height = _positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT)
         # Frame the whole fall: the sphere's starting point, the floor, and a little air around both.
-        coverage = drop_height + SPHERE_RADIUS + VERTICAL_MARGIN
+        coverage = _plan(context).drop_height + SPHERE_RADIUS + VERTICAL_MARGIN
         lens = min(MAX_LENS, max(MIN_LENS, (2.0 * SENSOR_HALF_WIDTH * CAMERA_DISTANCE) / coverage))
 
         scene = bpy.context.scene
@@ -136,63 +132,32 @@ class BouncingSphereTemplate(Template):
         scene = bpy.context.scene
         scene.render.film_transparent = False
 
+        # The reel's duration is the single source of truth for the simulation length.
         settings = self.render_settings(context)
-        frames = settings.frames
-
-        # The solver's timestep is one scene frame, so the frame rate has to be right *before* the
-        # simulation runs. Resetting the scene put it back to Blender's default 24; simulating at 24
-        # and playing back at 60 made the whole reel run two and a half times too fast.
-        scene.render.fps = settings.fps
-        scene.render.fps_base = 1.0
-        scene.frame_start = 1
-        scene.frame_end = frames
-
-        # The solver only simulates frames its cache covers; without this the sphere freezes mid-air
-        # partway through the reel.
-        world = scene.rigidbody_world
-        world.substeps_per_frame = 10
-        world.solver_iterations = 20
-        world.point_cache.frame_start = 1
-        world.point_cache.frame_end = frames
-
-        _simulate(scene, frames, SPHERE_NAME)
+        RigidBodyPhysics(scene).simulate(settings.frames, settings.fps, tracked_name=SPHERE_NAME)
 
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         # EEVEE, not Cycles: a ten second reel is 600 frames, and this has to finish on a laptop.
         return RenderSettings(engine="EEVEE", samples=RENDER_SAMPLES, fps=FPS,
-                              duration_seconds=_positive_number(context, "durationSeconds",
-                                                                DEFAULT_DURATION_SECONDS))
+                              duration_seconds=_plan(context).duration_seconds)
 
+    def timeline(self, context: TemplateContext) -> Timeline:
+        """What this reel is, as intent: two objects, a framing, a simulation, and time to watch it.
 
-def _ensure_rigid_body_world(scene) -> None:
-    if scene.rigidbody_world is None:
-        bpy.ops.rigidbody.world_add()
+        Nothing reads this yet - build() still does the work - but it is the same scene described
+        without a single Blender call, which is what a later story will execute instead.
+        """
+        plan = _plan(context)
+        timeline = Timeline()
+        timeline.add(SPAWN_OBJECT, at=0.0, name=GROUND_NAME, shape="plane",
+                     material=plan.ground_material, physics="static")
+        timeline.add(SPAWN_OBJECT, at=0.0, name=SPHERE_NAME, shape="sphere",
+                     radius=SPHERE_RADIUS, height=plan.drop_height, material=plan.material)
+        timeline.add(CAMERA_PRESET, at=0.0, framing="portrait-drop", covers=plan.drop_height)
+        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, target=SPHERE_NAME)
+        timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
+        return timeline
 
-
-def _simulate(scene, frames: int, tracked_name: str) -> None:
-    """Runs the whole simulation before the first frame is rendered, and reports the trajectory.
-
-    Rendering in background mode does not reliably step a rigid body solver: every frame comes out
-    with the object frozen at its starting transform, which looks like a still image ten seconds
-    long. Walking the timeline here evaluates the solver frame by frame and fills the point cache, so
-    the render afterwards just reads out the motion.
-
-    The trajectory summary is printed because a render is a slow way to discover that the physics was
-    wrong. Apex heights that fall away towards a resting height are what a good bounce looks like.
-    """
-    tracked = bpy.data.objects.get(tracked_name)
-    heights = []
-    for frame in range(scene.frame_start, frames + 1):
-        scene.frame_set(frame)
-        if tracked is not None:
-            heights.append(round(tracked.matrix_world.translation.z, 3))
-    scene.frame_set(scene.frame_start)
-
-    apexes = [heights[i] for i in range(1, len(heights) - 1)
-              if heights[i] > heights[i - 1] and heights[i] >= heights[i + 1]]
-    print("physics.simulated={0} start={1} rest={2} bounces={3} apexes={4}".format(
-        frames, heights[0] if heights else "?", heights[-1] if heights else "?",
-        len(apexes), apexes[:5]))
 
 
 def _add_area_light(name: str, energy: float, size: float, location: tuple, rotation: tuple) -> None:

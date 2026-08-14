@@ -21,6 +21,8 @@ import abc
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
+from .timeline import Timeline
+
 # Vertical is the product, not a template preference: Reels, Shorts and Spotlight are all portrait.
 PORTRAIT_WIDTH = 1080
 PORTRAIT_HEIGHT = 1920
@@ -103,6 +105,15 @@ class Template(abc.ABC):
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         """Portrait defaults; override to change resolution, sampling or engine."""
         return RenderSettings()
+
+    def timeline(self, context: TemplateContext) -> Timeline:
+        """What happens in this scene and when, as intent rather than Blender calls.
+
+        Nothing executes a timeline yet - build() still does the work - so a template that has not
+        described itself simply returns an empty one. When execution arrives, this becomes the
+        template's real output and build() shrinks to nothing.
+        """
+        return Timeline()
 
     @abc.abstractmethod
     def configure_environment(self, context: TemplateContext) -> None:

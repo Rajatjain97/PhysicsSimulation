@@ -11,12 +11,14 @@ Modules:
     asset_api           - the interface every shared asset implements
     material_repository - discovery, resolution and lifetime of shared materials
     asset_registry      - the handle templates use to reach shared assets
+    physics             - rigid bodies, presets and running a simulation
+    timeline            - what happens and when, as pure data
     renderer            - applies render settings and produces the image
     render_manifest     - records what was rendered, beside the output
     scene_builder       - orchestration: contract in, manifest out
 
 Adding a scene type means adding a template module; adding a shared material means adding an asset
-module. Nothing in this package changes.
+module; adding a physics behaviour means adding a preset. Nothing in this package changes.
 """
 
 SCHEMA_VERSION = "1.0"
