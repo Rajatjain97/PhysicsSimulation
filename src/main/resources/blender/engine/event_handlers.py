@@ -72,6 +72,11 @@ def spawn_object(event, stage) -> None:
     if scale:
         spawned.scale = tuple(float(axis) for axis in scale)
 
+    if event.data.get("visible") is False:
+        # A collider the camera should not see: a board needs a front wall to keep objects in its
+        # plane, and that wall must not stand between the camera and the scene.
+        spawned.hide_render = True
+
     _apply_material(spawned, event.data, stage)
 
     # Remembered so a later StartPhysics knows what it is attaching a body to.
