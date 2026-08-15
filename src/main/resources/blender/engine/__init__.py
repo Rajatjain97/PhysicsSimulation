@@ -14,6 +14,7 @@ Modules:
     physics             - rigid bodies, presets and running a simulation
     camera              - how a shot is framed: the camera presets
     text_overlay        - captions: styles, positions and fades
+    randomness          - the render seed and its named random streams
     timeline            - what happens and when, as pure data
     renderer            - applies render settings and produces the image
     render_manifest     - records what was rendered, beside the output

@@ -11,6 +11,7 @@ logs them and asserts on them.
 """
 
 from .asset_registry import AssetRegistry
+from .randomness import RandomContext
 from .render_manifest import write_manifest
 from .renderer import Renderer
 from .scene_director import SceneDirector
@@ -31,7 +32,12 @@ class SceneBuilder:
         descriptor = self._registry.resolve(contract.template)
         print("render.template=" + descriptor.name)
 
-        context = TemplateContext(parameters=dict(contract.parameters), assets=self._assets)
+        # One seed decides every random choice in the scene. Java puts it in the contract, so a
+        # manifest is enough to rebuild this exact reel.
+        randomness = RandomContext.from_parameters(contract.parameters)
+        print("render.seed=" + str(randomness.seed))
+        context = TemplateContext(parameters=dict(contract.parameters), assets=self._assets,
+                                  random=randomness)
 
         settings = descriptor.template.render_settings(context)
 

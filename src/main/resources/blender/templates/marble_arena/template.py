@@ -7,7 +7,6 @@ placed, the solver runs, and whatever survives in the arena survives.
 Parameters (all optional):
     durationSeconds  how long the reel runs, default 20 (the format wants 15-30)
     marbleCount      how many marbles, default 25
-    seed             placement seed; the same seed always gives the same reel, default 20260814
     physicsPreset    how the marbles behave: "Bouncy" (default) or "Heavy"
     cameraPreset     "TopDown" (default), "Orbit", "FollowObject", "SlowZoom" or "Static"
     material         shared material for the marbles, default "DefaultGlass"
@@ -20,13 +19,15 @@ The arena is described, never built here: every wall segment, marble and camera 
 event, so a future story can rotate the arena, open the gate or add a second floor by emitting
 different events rather than editing this file.
 
-Placement is a seeded sunflower spiral - even spacing with no overlaps, and identical every run.
+Placement is a sunflower spiral - even spacing with no overlaps - jittered, coloured and ordered from
+the render seed. The same seed always rebuilds the same reel; a different seed gives a different one.
 Marbles start at staggered heights so they arrive in a cascade rather than all at once, which is what
 makes the opening seconds worth watching.
+
+The seed itself comes from the render, not from this template: see the 'seed' render parameter.
 """
 
 import math
-import random
 from dataclasses import dataclass
 
 from engine.template_api import RenderSettings, Template, TemplateContext
@@ -34,7 +35,6 @@ from engine.timeline import CAMERA_PRESET, SHOW_TEXT, SPAWN_OBJECT, START_PHYSIC
 
 DEFAULT_DURATION_SECONDS = 20.0
 DEFAULT_MARBLE_COUNT = 25
-DEFAULT_SEED = 20260814
 DEFAULT_PHYSICS_PRESET = "Bouncy"
 DEFAULT_CAMERA_PRESET = "TopDown"
 DEFAULT_MARBLE_MATERIAL = "DefaultGlass"
@@ -59,6 +59,7 @@ DROP_STAGGER = 0.55
 DROP_LEVELS = 5
 PLACEMENT_SPREAD = 0.78
 PLACEMENT_JITTER = 0.12
+DROP_VARIATION = 0.45
 
 GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
 
@@ -89,7 +90,6 @@ class _ArenaPlan:
 
     duration_seconds: float
     marble_count: int
-    seed: int
     physics_preset: str
     camera_preset: str
     marble_material: str
@@ -103,7 +103,6 @@ def _plan(context: TemplateContext) -> _ArenaPlan:
     return _ArenaPlan(
         duration_seconds=_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
         marble_count=int(_positive_number(context, "marbleCount", DEFAULT_MARBLE_COUNT)),
-        seed=int(_number(context, "seed", DEFAULT_SEED)),
         physics_preset=str(context.parameter("physicsPreset", DEFAULT_PHYSICS_PRESET)),
         camera_preset=str(context.parameter("cameraPreset", DEFAULT_CAMERA_PRESET)),
         marble_material=str(context.parameter("material", DEFAULT_MARBLE_MATERIAL)),
@@ -155,7 +154,7 @@ class MarbleArenaTemplate(Template):
         timeline.add(SPAWN_OBJECT, at=0.0, name=FLOOR_NAME, shape="plane", size=FLOOR_SIZE,
                      material=plan.floor_material, physics="static")
         self._add_arena(timeline, plan)
-        marbles = self._add_marbles(timeline, plan)
+        marbles = self._add_marbles(timeline, plan, context)
 
         timeline.add(CAMERA_PRESET, at=0.0, preset=plan.camera_preset,
                      covers=2.0 * ARENA_RADIUS + FRAME_MARGIN, target=marbles[0])
@@ -190,21 +189,34 @@ class MarbleArenaTemplate(Template):
                          material=plan.arena_material, physics="static")
 
     @staticmethod
-    def _add_marbles(timeline: Timeline, plan: _ArenaPlan) -> list:
-        """Places the marbles on a seeded sunflower spiral and returns their names."""
-        placement = random.Random(plan.seed)
+    def _add_marbles(timeline: Timeline, plan: _ArenaPlan, context: TemplateContext) -> list:
+        """Places the marbles on a jittered sunflower spiral and returns their names.
+
+        Three separate streams, so that changing how colours are picked cannot move a single marble,
+        and adding a new random decision later cannot reshuffle the ones already here.
+        """
+        placement = context.random.stream("marble.placement")
+        colours = context.random.stream("marble.colour")
+        ordering = context.random.stream("marble.order")
+
+        # Which marble lands first is part of the drama, so the drop order is shuffled rather than
+        # following the spiral outwards.
+        slots = list(range(plan.marble_count))
+        ordering.shuffle(slots)
+
         names = []
-        for index in range(plan.marble_count):
-            radius = ARENA_RADIUS * PLACEMENT_SPREAD * math.sqrt((index + 0.5) / plan.marble_count)
-            angle = index * GOLDEN_ANGLE
-            colour_name, tint = PALETTE[index % len(PALETTE)]
+        for index, slot in enumerate(slots):
+            radius = ARENA_RADIUS * PLACEMENT_SPREAD * math.sqrt((slot + 0.5) / plan.marble_count)
+            angle = slot * GOLDEN_ANGLE
+            colour_name, tint = colours.choice(PALETTE)
             name = "{0}{1:02d}".format(MARBLE_NAME, index)
             names.append(name)
 
             timeline.add(SPAWN_OBJECT, at=0.0, name=name, shape="sphere", radius=MARBLE_RADIUS,
                          location=[radius * math.cos(angle) + placement.uniform(-PLACEMENT_JITTER, PLACEMENT_JITTER),
                                    radius * math.sin(angle) + placement.uniform(-PLACEMENT_JITTER, PLACEMENT_JITTER),
-                                   DROP_BASE_HEIGHT + (index % DROP_LEVELS) * DROP_STAGGER],
+                                   DROP_BASE_HEIGHT + (index % DROP_LEVELS) * DROP_STAGGER
+                                   + placement.uniform(0.0, DROP_VARIATION)],
                          material=plan.marble_material, tint=list(tint), tintName=colour_name)
         return names
 

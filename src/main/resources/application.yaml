@@ -60,7 +60,8 @@ physics-factory:
     output-file: output/videos/bouncing_sphere.mp4
     # Hundreds of frames, so this is a render budget rather than a startup timeout.
     timeout: 45m
-    # Passed to the template verbatim.
+    # Passed to the template verbatim. 'seed' is added automatically when absent and recorded in the
+    # manifest, so any render can be reproduced from what it wrote.
     #   BouncingSphere: durationSeconds, dropHeight, physicsPreset, cameraPreset,
     #                   material, groundMaterial
     #   DefaultSphere:  material, background

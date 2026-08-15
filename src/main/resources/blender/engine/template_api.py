@@ -76,10 +76,14 @@ class TemplateContext:
     Assets is the AssetRegistry: `context.assets.materials.resolve("DefaultGlass")`. It is typed
     loosely on purpose, so this module stays importable outside Blender - the registry reaches bpy,
     this file does not.
+
+    Random is the RandomContext for this render: `context.random.stream("placement")`. Every random
+    decision a template makes comes from there, so the same seed always rebuilds the same scene.
     """
 
     parameters: Dict[str, Any] = field(default_factory=dict)
     assets: Any = None
+    random: Any = None
 
     def parameter(self, name: str, default: Any = None) -> Any:
         return self.parameters.get(name, default)

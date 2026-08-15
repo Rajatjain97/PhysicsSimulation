@@ -13,9 +13,11 @@ import com.physicsfactory.domain.model.RenderResult;
 import com.physicsfactory.domain.model.RenderWorkspace;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +38,12 @@ public final class RenderScene {
     public static final String RENDER_SCRIPT = "render_scene.py";
 
     private static final Logger log = LoggerFactory.getLogger(RenderScene.class);
+
+    /** Contract parameter carrying the render seed. */
+    public static final String SEED_PARAMETER = "seed";
+
+    /** Keeps a generated seed small enough to read in a log and retype by hand. */
+    private static final long MAX_SEED = 1_000_000_000L;
 
     private static final String SCENE_ARGUMENT = "--scene";
     private static final String ENGINE_ARGUMENT = "--engine";
@@ -65,6 +73,21 @@ public final class RenderScene {
     }
 
     /**
+     * Guarantees the render has a seed.
+     *
+     * <p>Every random choice a template makes comes from this one number, so a render without a seed
+     * could never be reproduced. An operator's seed is used exactly as given; otherwise one is
+     * derived from the job's own id - unique per render, and recorded in the manifest along with
+     * every other parameter, which is what makes a reel rebuildable from its manifest alone.
+     */
+    private static Map<String, Object> seeded(Map<String, ?> parameters) {
+        Map<String, Object> seededParameters = new LinkedHashMap<>(parameters);
+        seededParameters.computeIfAbsent(SEED_PARAMETER,
+                key -> Math.abs(UUID.randomUUID().getMostSignificantBits() % MAX_SEED));
+        return seededParameters;
+    }
+
+    /**
      * @throws com.physicsfactory.domain.exception.ScriptNotFoundException    if the render script is missing
      * @throws com.physicsfactory.domain.exception.InvalidSceneContractException if the contract cannot be written
      * @throws com.physicsfactory.domain.exception.BlenderTimeoutException    if Blender outlived the budget
@@ -84,8 +107,9 @@ public final class RenderScene {
         log.info("Installing Blender runtime...");
         runtimeLibrary.installRuntime();
 
-        log.info("Generating scene contract for template '{}'...", request.template());
-        RenderJob job = RenderJob.create(request, parameters);
+        RenderJob job = RenderJob.create(request, seeded(parameters));
+        log.info("Generating scene contract for template '{}' with seed {}...",
+                request.template(), job.scene().parameters().get(SEED_PARAMETER));
         Path script = scriptLibrary.locate(RENDER_SCRIPT);
 
         Path sceneFile = renderWorkspace.cache().resolve(job.sceneFileName());
