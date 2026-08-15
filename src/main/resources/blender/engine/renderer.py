@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import bpy
 
 from .template_api import RenderSettings
+from .timing import measure
 
 IMAGE_EXTENSIONS = {
     "PNG": ".png",
@@ -24,6 +25,47 @@ IMAGE_EXTENSIONS = {
 }
 
 MOVIE_FORMAT = "FFMPEG"
+
+MINIMUM_SAMPLES = 4
+
+
+@dataclass(frozen=True)
+class RenderQuality:
+    """How much of a template's declared quality to actually pay for.
+
+    A quality never touches the frame rate or the frame count. The solver's timestep is one scene
+    frame, so changing either would change the simulation itself - a fast render would no longer be
+    a preview of the real one, it would be a different reel. Only the cost of drawing each frame
+    varies: how many pixels, how many samples, and whether the expensive raytraced refraction pass
+    runs at all.
+    """
+
+    name: str
+    resolution_percentage: int
+    sample_scale: float
+    raytracing: bool
+
+    def samples_for(self, declared: int) -> int:
+        return max(MINIMUM_SAMPLES, int(round(declared * self.sample_scale)))
+
+
+QUALITIES = {
+    # What gets published: full resolution, the template's samples, refraction on.
+    "PRODUCTION": RenderQuality("PRODUCTION", 100, 1.0, True),
+    # What a template author watches while iterating: quarter of the pixels, a quarter of the
+    # samples, and no raytracing. Same composition, same physics, same timing - just cheaper.
+    "FAST": RenderQuality("FAST", 50, 0.25, False),
+}
+
+DEFAULT_QUALITY = "PRODUCTION"
+
+
+def quality(name: str) -> RenderQuality:
+    found = QUALITIES.get(str(name).upper())
+    if found is None:
+        raise RenderError("Unknown render quality '{0}'. This engine knows: {1}".format(
+            name, ", ".join(sorted(QUALITIES))))
+    return found
 
 # Logical engine names templates use, mapped to the identifiers Blender actually offers. EEVEE was
 # renamed in 4.2, so the first identifier that exists in this build wins.
@@ -49,6 +91,9 @@ class RenderOutcome:
 
 class Renderer:
 
+    def __init__(self, quality_name: str = DEFAULT_QUALITY):
+        self._quality = quality(quality_name)
+
     def render(self, settings: RenderSettings, output_path: str) -> RenderOutcome:
         # Relative paths are resolved against the working directory, which Java sets to the workspace
         # root, so the contract means the same thing on both sides of the boundary.
@@ -57,11 +102,21 @@ class Renderer:
 
         scene = bpy.context.scene
         self._apply(scene, settings)
+        # What actually did the work, so a slow render's own log says which engine and which device
+        # to blame. EEVEE is rasterised on the GPU; only Cycles has a device to choose.
+        print("render.quality={0} engine={1} device={2} samples={3} scale={4}%".format(
+            self._quality.name, scene.render.engine,
+            getattr(getattr(scene, "cycles", None), "device", "GPU (rasterised)")
+            if scene.render.engine == "CYCLES" else "GPU (rasterised)",
+            self._quality.samples_for(settings.samples), self._quality.resolution_percentage))
 
-        if settings.is_animation:
-            produced = self._render_animation(scene, settings, absolute)
-        else:
-            produced = self._render_still(scene, settings, absolute)
+        # Frame rendering and H.264 encoding both happen inside one Blender call, so they cannot be
+        # timed apart without rendering frame by frame. This measures them together.
+        with measure("render"):
+            if settings.is_animation:
+                produced = self._render_animation(scene, settings, absolute)
+            else:
+                produced = self._render_still(scene, settings, absolute)
 
         return RenderOutcome(produced, settings.resolution, settings.fps,
                              settings.duration_seconds, settings.frames if settings.is_animation else 1)
@@ -143,27 +198,28 @@ class Renderer:
         print("render.renamed=" + os.path.basename(candidates[0]) + "->" + os.path.basename(absolute))
         return absolute
 
-    @staticmethod
-    def _apply(scene, settings: RenderSettings) -> None:
+    def _apply(self, scene, settings: RenderSettings) -> None:
         render = scene.render
         render.resolution_x = settings.width
         render.resolution_y = settings.height
-        render.resolution_percentage = 100
+        render.resolution_percentage = self._quality.resolution_percentage
         render.image_settings.color_mode = settings.color_mode
         render.engine = _resolve_engine(scene, settings.engine)
 
+        samples = self._quality.samples_for(settings.samples)
         cycles = getattr(scene, "cycles", None)
         if render.engine == "CYCLES" and cycles is not None:
             cycles.device = settings.device
-            cycles.samples = settings.samples
+            cycles.samples = samples
 
         eevee = getattr(scene, "eevee", None)
         if render.engine.startswith("BLENDER_EEVEE") and eevee is not None:
-            _set(eevee, "taa_render_samples", settings.samples)
-            # Refraction for glass: raytracing in 4.2+, screen space reflections before that.
-            _set(eevee, "use_raytracing", True)
-            _set(eevee, "use_ssr", True)
-            _set(eevee, "use_ssr_refraction", True)
+            _set(eevee, "taa_render_samples", samples)
+            # Refraction for glass: raytracing in 4.2+, screen space reflections before that. This is
+            # the most expensive switch in the engine, which is why a fast render turns it off.
+            _set(eevee, "use_raytracing", self._quality.raytracing)
+            _set(eevee, "use_ssr", self._quality.raytracing)
+            _set(eevee, "use_ssr_refraction", self._quality.raytracing)
 
 
 def _resolve_engine(scene, requested: str) -> str:

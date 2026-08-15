@@ -16,6 +16,7 @@ import com.physicsfactory.application.usecase.RenderScene;
 import com.physicsfactory.application.usecase.RunBlenderHealthcheck;
 import com.physicsfactory.application.usecase.ValidateBlenderInstallation;
 import com.physicsfactory.domain.model.BatchRequest;
+import com.physicsfactory.domain.model.RenderQuality;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderWorkspace;
 import com.physicsfactory.domain.model.WorkspaceDirectory;
@@ -150,9 +151,10 @@ class BootstrapConfiguration {
                             SceneContractWriter sceneContractWriter,
                             BlenderProcessRunner blenderProcessRunner,
                             RenderWorkspace renderWorkspace,
-                            WorkspaceLayout workspaceLayout) {
+                            WorkspaceLayout workspaceLayout,
+                            PhysicsFactoryProperties properties) {
         return new RenderScene(blenderRuntimeLibrary, blenderScriptLibrary, sceneContractWriter,
-                blenderProcessRunner, renderWorkspace, workspaceLayout.root());
+                blenderProcessRunner, renderWorkspace, workspaceLayout.root(), properties.render().quality());
     }
 
     @Bean

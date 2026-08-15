@@ -19,6 +19,8 @@ from typing import Dict, Optional
 
 import bpy
 
+from .timing import measure
+
 # Body types.
 ACTIVE = "ACTIVE"
 PASSIVE = "PASSIVE"
@@ -154,11 +156,12 @@ class RigidBodyPhysics:
 
         tracked = bpy.data.objects.get(tracked_name) if tracked_name else None
         heights = []
-        for frame in range(scene.frame_start, frames + 1):
-            scene.frame_set(frame)
-            if tracked is not None:
-                heights.append(round(tracked.matrix_world.translation.z, 3))
-        scene.frame_set(scene.frame_start)
+        with measure("physics"):
+            for frame in range(scene.frame_start, frames + 1):
+                scene.frame_set(frame)
+                if tracked is not None:
+                    heights.append(round(tracked.matrix_world.translation.z, 3))
+            scene.frame_set(scene.frame_start)
 
         self._report(frames, heights)
 

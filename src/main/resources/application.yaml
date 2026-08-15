@@ -61,6 +61,10 @@ physics-factory:
     output-file: output/videos/bouncing_sphere.mp4
     # Hundreds of frames, so this is a render budget rather than a startup timeout.
     timeout: 45m
+    # PRODUCTION renders what gets published. FAST renders the same scene, same physics and same
+    # timing at half the resolution, a quarter of the samples and no raytracing - for iterating on a
+    # template without waiting out a full render.
+    quality: PRODUCTION
     # Passed to the template verbatim. 'seed' is added automatically when absent and recorded in the
     # manifest, so any render can be reproduced from what it wrote.
     #   BouncingSphere: durationSeconds, dropHeight, physicsPreset, cameraPreset,

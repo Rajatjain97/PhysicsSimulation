@@ -18,6 +18,7 @@ from .scene_director import SceneDirector
 from .scene_contract import SceneContract
 from .template_api import TemplateContext
 from .template_registry import TemplateRegistry
+from .timing import measure
 
 
 class SceneBuilder:
@@ -28,7 +29,16 @@ class SceneBuilder:
         self._renderer = renderer
 
     def build_and_render(self, contract: SceneContract, render_id: str) -> str:
-        """Renders the contract and returns the path of the manifest that was written."""
+        """Renders the contract and returns the path of the manifest that was written.
+
+        Each stage prints how long it took. Java measures the whole Blender process, so the gap
+        between its measurement and "timing.total" here is Blender's own startup and teardown - a
+        cost this side cannot see, and the only one that has to be inferred.
+        """
+        with measure("total"):
+            return self._build_and_render(contract, render_id)
+
+    def _build_and_render(self, contract: SceneContract, render_id: str) -> str:
         descriptor = self._registry.resolve(contract.template)
         print("render.template=" + descriptor.name)
 
@@ -43,13 +53,15 @@ class SceneBuilder:
 
         # A template describes what happens; the director carries it out. build() runs first because
         # it establishes the environment - including resetting the scene - that events land in.
-        descriptor.template.build(context)
+        with measure("scene"):
+            descriptor.template.build(context)
 
-        timeline = descriptor.template.timeline(context)
-        if not timeline.is_empty():
-            print("render.timeline=" + timeline.summary())
-            directed = SceneDirector(self._assets, settings).direct(timeline)
-            print("render.directed=" + str(directed))
+            timeline = descriptor.template.timeline(context)
+            if not timeline.is_empty():
+                print("render.timeline=" + timeline.summary())
+                # Physics runs inside this, and times itself separately.
+                directed = SceneDirector(self._assets, settings).direct(timeline)
+                print("render.directed=" + str(directed))
         materials = self._assets.materials.resolved_names()
         print("render.materials=" + (",".join(materials) or "(none)"))
         print("render.scene=built")

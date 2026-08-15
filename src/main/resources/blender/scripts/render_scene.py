@@ -4,7 +4,7 @@ Run by Java as:
 
     blender --background --python render_scene.py -- \
         --scene <contract.json> --engine <engine dir> --templates <templates dir> \
-        --assets <assets dir> --render-id <id>
+        --assets <assets dir> --render-id <id> [--quality PRODUCTION|FAST]
 
 Deliberately thin. This file parses arguments, puts the engine package on the import path and hands
 over; every decision worth reviewing lives in the engine modules or in a template. If this script
@@ -25,7 +25,8 @@ def main() -> None:
     contract = engine["scene_contract"].SceneContract.load(arguments.scene)
     templates = engine["template_registry"].TemplateRegistry(arguments.templates)
     assets = engine["asset_registry"].AssetRegistry(arguments.assets)
-    builder = engine["scene_builder"].SceneBuilder(templates, assets, engine["renderer"].Renderer())
+    renderer = engine["renderer"].Renderer(arguments.quality)
+    builder = engine["scene_builder"].SceneBuilder(templates, assets, renderer)
 
     builder.build_and_render(contract, arguments.render_id)
 
@@ -44,6 +45,8 @@ def _parse_arguments(argv: list) -> argparse.Namespace:
     parser.add_argument("--templates", required=True, help="path to the templates directory")
     parser.add_argument("--assets", required=True, help="path to the shared asset library directory")
     parser.add_argument("--render-id", required=True, dest="render_id", help="identity assigned by Java")
+    parser.add_argument("--quality", default="PRODUCTION",
+                        help="how much rendering cost to pay: PRODUCTION or FAST")
     return parser.parse_args(argv)
 
 

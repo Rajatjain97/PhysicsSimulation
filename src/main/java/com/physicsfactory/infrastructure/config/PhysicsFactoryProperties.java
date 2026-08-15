@@ -2,6 +2,7 @@ package com.physicsfactory.infrastructure.config;
 
 import com.physicsfactory.domain.model.WorkspaceDirectory;
 import jakarta.validation.Valid;
+import com.physicsfactory.domain.model.RenderQuality;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -63,11 +64,14 @@ public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
      * @param outputFile where the render belongs, relative to the workspace root; the extension
      *                   decides whether Java expects a still or a movie
      * @param timeout    how long the render may take - a sixty second reel is hundreds of frames
+     * @param quality    PRODUCTION for what gets published, FAST for iterating on a template; it
+     *                   changes only the cost of drawing frames, never the simulation
      * @param parameters template-specific input, carried into the scene contract untouched
      */
     public record Render(@NotBlank String template,
                          @NotBlank String outputFile,
                          @NotNull Duration timeout,
+                         @NotNull RenderQuality quality,
                          @NotNull Map<String, Object> parameters) {
     }
 
