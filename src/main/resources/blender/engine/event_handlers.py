@@ -16,7 +16,8 @@ import bpy
 from .camera import DEFAULT_PRESET as DEFAULT_CAMERA_PRESET
 from .camera import CameraRequest, place as place_camera
 from .physics import BOX, MESH, SPHERE, RigidBodyPhysics
-from .timeline import CAMERA_PRESET, SPAWN_OBJECT, START_PHYSICS, WAIT
+from .text_overlay import TextRequest, show as show_caption
+from .timeline import CAMERA_PRESET, SHOW_TEXT, SPAWN_OBJECT, START_PHYSICS, WAIT
 
 # Mesh quality for spawned primitives. Not scene intent, so not in the timeline.
 SPHERE_SEGMENTS = 64
@@ -121,6 +122,22 @@ def camera_preset(event, stage) -> None:
     place_camera(request, stage.scene)
 
 
+def show_text(event, stage) -> None:
+    """Puts a caption on screen for the window the timeline gave it.
+
+    Timing comes from the event itself - when it starts and how long it lasts - so a caption is
+    scheduled exactly like anything else on the timeline.
+    """
+    request = TextRequest(
+        text=str(event.data.get("text", "")),
+        style=str(event.data.get("style", "Default")),
+        position=event.data.get("position"),
+        at=event.at,
+        duration=event.duration,
+        name=event.data.get("name"))
+    show_caption(request, stage.scene, stage.settings.fps, stage.settings.frames)
+
+
 def wait(event, stage) -> None:
     """Holds the shot. A render has no clock to wait on - the duration is the reel's length."""
     return None
@@ -161,5 +178,6 @@ DEFAULT_HANDLERS = {
     SPAWN_OBJECT: spawn_object,
     START_PHYSICS: start_physics,
     CAMERA_PRESET: camera_preset,
+    SHOW_TEXT: show_text,
     WAIT: wait,
 }

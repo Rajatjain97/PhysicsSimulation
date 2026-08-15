@@ -13,6 +13,8 @@ Parameters (all optional):
     material         shared material for the marbles, default "DefaultGlass"
     arenaMaterial    shared material for the walls, default "DefaultGlass"
     floorMaterial    shared material for the floor, default "DefaultMetal"
+    hookText         opening caption, default "Only ONE marble survives"
+    winnerText       closing caption, default "Winner"
 
 The arena is described, never built here: every wall segment, marble and camera move is a timeline
 event, so a future story can rotate the arena, open the gate or add a second floor by emitting
@@ -28,7 +30,7 @@ import random
 from dataclasses import dataclass
 
 from engine.template_api import RenderSettings, Template, TemplateContext
-from engine.timeline import CAMERA_PRESET, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
+from engine.timeline import CAMERA_PRESET, SHOW_TEXT, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
 
 DEFAULT_DURATION_SECONDS = 20.0
 DEFAULT_MARBLE_COUNT = 25
@@ -71,6 +73,11 @@ PALETTE = (
     ("Lime", (0.72, 0.94, 0.24)),
 )
 
+HOOK_SECONDS = 3.0
+WINNER_SECONDS = 3.0
+DEFAULT_HOOK_TEXT = "Only ONE marble survives"
+DEFAULT_WINNER_TEXT = "Winner"
+
 FLOOR_NAME = "ArenaFloor"
 WALL_NAME = "ArenaWall"
 MARBLE_NAME = "Marble"
@@ -88,6 +95,8 @@ class _ArenaPlan:
     marble_material: str
     arena_material: str
     floor_material: str
+    hook_text: str
+    winner_text: str
 
 
 def _plan(context: TemplateContext) -> _ArenaPlan:
@@ -99,7 +108,9 @@ def _plan(context: TemplateContext) -> _ArenaPlan:
         camera_preset=str(context.parameter("cameraPreset", DEFAULT_CAMERA_PRESET)),
         marble_material=str(context.parameter("material", DEFAULT_MARBLE_MATERIAL)),
         arena_material=str(context.parameter("arenaMaterial", DEFAULT_ARENA_MATERIAL)),
-        floor_material=str(context.parameter("floorMaterial", DEFAULT_FLOOR_MATERIAL)))
+        floor_material=str(context.parameter("floorMaterial", DEFAULT_FLOOR_MATERIAL)),
+        hook_text=str(context.parameter("hookText", DEFAULT_HOOK_TEXT)),
+        winner_text=str(context.parameter("winnerText", DEFAULT_WINNER_TEXT)))
 
 
 class MarbleArenaTemplate(Template):
@@ -149,6 +160,14 @@ class MarbleArenaTemplate(Template):
         timeline.add(CAMERA_PRESET, at=0.0, preset=plan.camera_preset,
                      covers=2.0 * ARENA_RADIUS + FRAME_MARGIN, target=marbles[0])
         timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, targets=marbles)
+
+        # The captions are the template's own words, scheduled like any other event.
+        timeline.add(SHOW_TEXT, at=0.0, duration=HOOK_SECONDS, style="Hook", name="HookCaption",
+                     text=str(plan.hook_text))
+        timeline.add(SHOW_TEXT, at=max(plan.duration_seconds - WINNER_SECONDS, 0.0),
+                     duration=WINNER_SECONDS, style="Winner", name="WinnerCaption",
+                     text=str(plan.winner_text))
+
         timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
         return timeline
 

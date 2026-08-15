@@ -13,6 +13,7 @@ Modules:
     asset_registry      - the handle templates use to reach shared assets
     physics             - rigid bodies, presets and running a simulation
     camera              - how a shot is framed: the camera presets
+    text_overlay        - captions: styles, positions and fades
     timeline            - what happens and when, as pure data
     renderer            - applies render settings and produces the image
     render_manifest     - records what was rendered, beside the output
