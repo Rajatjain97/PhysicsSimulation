@@ -81,6 +81,8 @@ public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
      * @param seed       batch seed; leave it out and one is generated and recorded
      * @param dryRun     print the plan and the seeds without launching Blender
      * @param timeout    render budget for a single video
+     * @param quality    how much rendering cost each video may pay; a batch is often previewed at
+     *                   FAST before the same seeds are re-rendered at PRODUCTION
      * @param parameters parameters shared by every video; each video's seed is added per render
      */
     public record Batch(@NotBlank String template,
@@ -88,6 +90,7 @@ public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
                         Long seed,
                         boolean dryRun,
                         @NotNull Duration timeout,
+                        @NotNull RenderQuality quality,
                         @NotNull Map<String, Object> parameters) {
     }
 }

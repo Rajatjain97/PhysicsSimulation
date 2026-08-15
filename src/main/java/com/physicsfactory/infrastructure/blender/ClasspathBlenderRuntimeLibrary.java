@@ -65,7 +65,7 @@ public final class ClasspathBlenderRuntimeLibrary implements BlenderRuntimeLibra
                     continue;
                 }
                 String relative = relativePath(resource, classpathRoot);
-                if (relative == null) {
+                if (relative == null || isCompiledPython(relative)) {
                     continue;
                 }
                 installed.add(install(resource, resolveInside(targetDirectory, relative)));
@@ -78,6 +78,17 @@ public final class ClasspathBlenderRuntimeLibrary implements BlenderRuntimeLibra
     }
 
     /** Works for both {@code file:} and {@code jar:} URLs, which is why it matches on the root marker. */
+    /**
+     * Compiled Python is never installed.
+     *
+     * <p>A {@code __pycache__} directory can end up on the classpath simply because somebody ran the
+     * engine outside Blender, and shipping a stale {@code .pyc} into the render workspace is a class
+     * of bug that costs an afternoon to find. Blender writes its own cache in the workspace anyway.
+     */
+    private static boolean isCompiledPython(String relative) {
+        return relative.endsWith(".pyc") || relative.contains("__pycache__");
+    }
+
     private static String relativePath(Resource resource, String classpathRoot) throws IOException {
         String url = resource.getURL().toString();
         int start = url.lastIndexOf(classpathRoot);

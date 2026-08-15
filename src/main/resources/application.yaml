@@ -84,6 +84,9 @@ physics-factory:
     count: 3
     dry-run: false
     timeout: 45m
+    # Independent of render.quality: a batch is usually previewed at FAST, then the same seeds are
+    # re-rendered at PRODUCTION once the reels look right.
+    quality: PRODUCTION
     parameters:
       durationSeconds: 20
 

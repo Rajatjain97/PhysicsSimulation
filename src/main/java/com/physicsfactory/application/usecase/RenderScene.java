@@ -8,7 +8,6 @@ import com.physicsfactory.domain.exception.RenderOutputMissingException;
 import com.physicsfactory.domain.model.BlenderExecution;
 import com.physicsfactory.domain.model.BlenderScriptRequest;
 import com.physicsfactory.domain.model.RenderJob;
-import com.physicsfactory.domain.model.RenderQuality;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderResult;
 import com.physicsfactory.domain.model.RenderWorkspace;
@@ -59,22 +58,19 @@ public final class RenderScene {
     private final BlenderProcessRunner processRunner;
     private final RenderWorkspace renderWorkspace;
     private final Path workspaceRoot;
-    private final RenderQuality quality;
 
     public RenderScene(BlenderRuntimeLibrary runtimeLibrary,
                        BlenderScriptLibrary scriptLibrary,
                        SceneContractWriter sceneContractWriter,
                        BlenderProcessRunner processRunner,
                        RenderWorkspace renderWorkspace,
-                       Path workspaceRoot,
-                       RenderQuality quality) {
+                       Path workspaceRoot) {
         this.runtimeLibrary = Objects.requireNonNull(runtimeLibrary, "runtimeLibrary must not be null");
         this.scriptLibrary = Objects.requireNonNull(scriptLibrary, "scriptLibrary must not be null");
         this.sceneContractWriter = Objects.requireNonNull(sceneContractWriter, "sceneContractWriter must not be null");
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner must not be null");
         this.renderWorkspace = Objects.requireNonNull(renderWorkspace, "renderWorkspace must not be null");
         this.workspaceRoot = Objects.requireNonNull(workspaceRoot, "workspaceRoot must not be null");
-        this.quality = Objects.requireNonNull(quality, "quality must not be null");
     }
 
     /**
@@ -121,14 +117,14 @@ public final class RenderScene {
         log.info("Writing JSON to {}...", sceneFile);
         sceneContractWriter.write(job.scene(), sceneFile);
 
-        log.info("Launching Blender at {} quality...", quality);
+        log.info("Launching Blender at {} quality...", request.quality());
         BlenderExecution execution = processRunner.runScript(new BlenderScriptRequest(script,
                 List.of(SCENE_ARGUMENT, sceneFile.toString(),
                         ENGINE_ARGUMENT, renderWorkspace.engine().toString(),
                         ASSETS_ARGUMENT, renderWorkspace.assets().toString(),
                         TEMPLATES_ARGUMENT, renderWorkspace.templates().toString(),
                         RENDER_ID_ARGUMENT, job.id().toString(),
-                        QUALITY_ARGUMENT, quality.argument()),
+                        QUALITY_ARGUMENT, request.quality().argument()),
                 request.timeout()));
 
         if (!execution.isSuccessful()) {
@@ -145,7 +141,7 @@ public final class RenderScene {
         // The Blender side prints how long each of its own stages took. This is the whole process,
         // so the difference between the two is Blender's startup and teardown.
         log.info("Rendering completed successfully in {}ms (whole Blender process, {} quality)",
-                execution.duration().toMillis(), quality);
+                execution.duration().toMillis(), request.quality());
         return RenderResult.succeeded(job.id(), execution, image);
     }
 }

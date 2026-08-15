@@ -16,7 +16,6 @@ import com.physicsfactory.application.usecase.RenderScene;
 import com.physicsfactory.application.usecase.RunBlenderHealthcheck;
 import com.physicsfactory.application.usecase.ValidateBlenderInstallation;
 import com.physicsfactory.domain.model.BatchRequest;
-import com.physicsfactory.domain.model.RenderQuality;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderWorkspace;
 import com.physicsfactory.domain.model.WorkspaceDirectory;
@@ -151,10 +150,9 @@ class BootstrapConfiguration {
                             SceneContractWriter sceneContractWriter,
                             BlenderProcessRunner blenderProcessRunner,
                             RenderWorkspace renderWorkspace,
-                            WorkspaceLayout workspaceLayout,
-                            PhysicsFactoryProperties properties) {
+                            WorkspaceLayout workspaceLayout) {
         return new RenderScene(blenderRuntimeLibrary, blenderScriptLibrary, sceneContractWriter,
-                blenderProcessRunner, renderWorkspace, workspaceLayout.root(), properties.render().quality());
+                blenderProcessRunner, renderWorkspace, workspaceLayout.root());
     }
 
     @Bean
@@ -200,7 +198,8 @@ class BootstrapConfiguration {
     SceneRenderRunner sceneRenderRunner(RenderScene renderScene, PhysicsFactoryProperties properties) {
         PhysicsFactoryProperties.Render render = properties.render();
         return new SceneRenderRunner(renderScene,
-                new RenderRequest(render.template(), Path.of(render.outputFile()), render.timeout()),
+                new RenderRequest(render.template(), Path.of(render.outputFile()), render.timeout(),
+                        render.quality()),
                 render.parameters());
     }
 
@@ -234,7 +233,7 @@ class BootstrapConfiguration {
         Path outputDirectory = workspaceLayout.root()
                 .relativize(workspaceLayout.pathOf(WorkspaceDirectory.BATCH_OUTPUT));
         BatchRequest request = new BatchRequest(batch.template(), batch.count(), outputDirectory, seed,
-                batch.parameters(), batch.timeout());
+                batch.parameters(), batch.timeout(), batch.quality());
         return new BatchRenderRunner(renderBatch, request, workspaceLayout.root(), batch.dryRun());
     }
 

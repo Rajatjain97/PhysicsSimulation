@@ -20,15 +20,17 @@ import java.util.Objects;
  * @param seed             the batch seed
  * @param parameters       parameters shared by every video; each video adds only its own seed
  * @param timeout          render budget for a single video
+ * @param quality          how much rendering cost each video in the batch may pay
  */
 public record BatchRequest(String template, int count, Path outputDirectory, long seed,
-                           Map<String, Object> parameters, Duration timeout) {
+                           Map<String, Object> parameters, Duration timeout, RenderQuality quality) {
 
     public BatchRequest {
         Objects.requireNonNull(template, "template must not be null");
         Objects.requireNonNull(outputDirectory, "outputDirectory must not be null");
         Objects.requireNonNull(parameters, "parameters must not be null");
         Objects.requireNonNull(timeout, "timeout must not be null");
+        Objects.requireNonNull(quality, "quality must not be null");
         if (template.isBlank()) {
             throw new InvalidSceneContractException("A batch needs a template.");
         }

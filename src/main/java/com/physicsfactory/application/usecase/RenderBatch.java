@@ -72,8 +72,8 @@ public final class RenderBatch {
         directoryProvisioner.ensureDirectoryExists(workspaceRoot.resolve(batchDirectory));
 
         List<Long> seeds = deriveSeeds(request.seed(), request.count());
-        log.info("Batch {} | template {} | {} videos | batch seed {}",
-                batchId, request.template(), request.count(), request.seed());
+        log.info("Batch {} | template {} | {} videos | batch seed {} | quality {}",
+                batchId, request.template(), request.count(), request.seed(), request.quality());
 
         List<BatchEntry> entries = new ArrayList<>();
         int succeeded = 0;
@@ -98,7 +98,7 @@ public final class RenderBatch {
 
         BatchManifest manifest = new BatchManifest(batchId, request.template(), request.count(), succeeded,
                 failed, request.seed(), Instant.now().truncatedTo(ChronoUnit.SECONDS).toString(),
-                request.parameters(), entries);
+                request.quality(), request.parameters(), entries);
         Path manifestFile = workspaceRoot.resolve(batchDirectory).resolve(BATCH_MANIFEST);
         batchManifestWriter.write(manifest, manifestFile);
 
@@ -135,7 +135,8 @@ public final class RenderBatch {
         Instant started = Instant.now();
         try {
             RenderResult result = renderScene.execute(
-                    new RenderRequest(request.template(), video, request.timeout()), parameters);
+                    new RenderRequest(request.template(), video, request.timeout(), request.quality()),
+                    parameters);
             long elapsed = Duration.between(started, Instant.now()).toMillis();
 
             if (result.isSuccessful()) {

@@ -33,28 +33,36 @@ MINIMUM_SAMPLES = 4
 class RenderQuality:
     """How much of a template's declared quality to actually pay for.
 
-    A quality never touches the frame rate or the frame count. The solver's timestep is one scene
-    frame, so changing either would change the simulation itself - a fast render would no longer be
-    a preview of the real one, it would be a different reel. Only the cost of drawing each frame
-    varies: how many pixels, how many samples, and whether the expensive raytraced refraction pass
-    runs at all.
+    Two things a quality must never change, both learned the hard way:
+
+    * **The simulation.** The solver's timestep is one scene frame, so frame rate and frame count are
+      simulation inputs, not render settings. Lowering either would produce a different reel rather
+      than a cheaper view of the same one.
+    * **What the scene is made of.** Switching raytracing off cost every glass marble its colour:
+      a transmissive material has nothing to refract without it, and a preview that misrepresents
+      the materials is not a preview. Refraction stays on at every quality; only the resolution it
+      is traced at varies.
+
+    So a quality only ever scales cost: how many pixels, how many samples, and how finely the
+    raytracing pass is traced.
     """
 
     name: str
     resolution_percentage: int
     sample_scale: float
-    raytracing: bool
+    trace_divisor: int
 
     def samples_for(self, declared: int) -> int:
         return max(MINIMUM_SAMPLES, int(round(declared * self.sample_scale)))
 
 
 QUALITIES = {
-    # What gets published: full resolution, the template's samples, refraction on.
-    "PRODUCTION": RenderQuality("PRODUCTION", 100, 1.0, True),
-    # What a template author watches while iterating: quarter of the pixels, a quarter of the
-    # samples, and no raytracing. Same composition, same physics, same timing - just cheaper.
-    "FAST": RenderQuality("FAST", 50, 0.25, False),
+    # What gets published: full resolution, the template's samples, tracing at full resolution.
+    "PRODUCTION": RenderQuality("PRODUCTION", 100, 1.0, 1),
+    # What a template author watches while iterating: a quarter of the pixels, half the samples, and
+    # refraction traced at a quarter resolution. Same composition, same physics, same timing, same
+    # materials - a smaller, softer version of the real reel rather than a different one.
+    "FAST": RenderQuality("FAST", 50, 0.5, 4),
 }
 
 DEFAULT_QUALITY = "PRODUCTION"
@@ -93,6 +101,9 @@ class Renderer:
 
     def __init__(self, quality_name: str = DEFAULT_QUALITY):
         self._quality = quality(quality_name)
+        # What the raytracing pass was actually traced at, reported rather than assumed: the control
+        # is version specific, and a render should say what it really did.
+        self._traced_at = "n/a"
 
     def render(self, settings: RenderSettings, output_path: str) -> RenderOutcome:
         # Relative paths are resolved against the working directory, which Java sets to the workspace
@@ -104,11 +115,12 @@ class Renderer:
         self._apply(scene, settings)
         # What actually did the work, so a slow render's own log says which engine and which device
         # to blame. EEVEE is rasterised on the GPU; only Cycles has a device to choose.
-        print("render.quality={0} engine={1} device={2} samples={3} scale={4}%".format(
+        print("render.quality={0} engine={1} device={2} samples={3} scale={4}% traced=1:{5}".format(
             self._quality.name, scene.render.engine,
             getattr(getattr(scene, "cycles", None), "device", "GPU (rasterised)")
             if scene.render.engine == "CYCLES" else "GPU (rasterised)",
-            self._quality.samples_for(settings.samples), self._quality.resolution_percentage))
+            self._quality.samples_for(settings.samples), self._quality.resolution_percentage,
+            self._traced_at))
 
         # Frame rendering and H.264 encoding both happen inside one Blender call, so they cannot be
         # timed apart without rendering frame by frame. This measures them together.
@@ -212,14 +224,33 @@ class Renderer:
             cycles.device = settings.device
             cycles.samples = samples
 
+        self._traced_at = "n/a"
         eevee = getattr(scene, "eevee", None)
         if render.engine.startswith("BLENDER_EEVEE") and eevee is not None:
             _set(eevee, "taa_render_samples", samples)
-            # Refraction for glass: raytracing in 4.2+, screen space reflections before that. This is
-            # the most expensive switch in the engine, which is why a fast render turns it off.
-            _set(eevee, "use_raytracing", self._quality.raytracing)
-            _set(eevee, "use_ssr", self._quality.raytracing)
-            _set(eevee, "use_ssr_refraction", self._quality.raytracing)
+            # Refraction for glass: raytracing in 4.2+, screen space reflections before that. Always
+            # on - the glass materials are transmissive and render colourless without it.
+            _set(eevee, "use_raytracing", True)
+            _set(eevee, "use_ssr", True)
+            _set(eevee, "use_ssr_refraction", True)
+            self._traced_at = _trace_resolution(eevee, self._quality.trace_divisor)
+
+
+def _trace_resolution(eevee, divisor: int) -> str:
+    """Traces raytracing at a fraction of the render resolution, when the build allows it.
+
+    Cheaper than switching raytracing off and honest in a way that switching it off is not: glass
+    still refracts and still carries its colour, it is simply resolved more coarsely. The control is
+    EEVEE Next's and is spelled differently across releases, so what actually took effect is returned
+    rather than assumed.
+    """
+    if divisor <= 1:
+        return "1"
+    options = getattr(eevee, "ray_tracing_options", None)
+    if options is not None and _try_set(options, "resolution_scale", str(divisor)):
+        return str(divisor)
+    # Older EEVEE traces screen space at a fixed resolution; the sample and pixel cuts still apply.
+    return "1 (this build has no trace resolution control)"
 
 
 def _resolve_engine(scene, requested: str) -> str:

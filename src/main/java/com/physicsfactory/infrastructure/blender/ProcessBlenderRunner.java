@@ -8,8 +8,10 @@ import com.physicsfactory.domain.exception.ScriptNotFoundException;
 import com.physicsfactory.domain.model.BlenderExecution;
 import com.physicsfactory.domain.model.BlenderInstallation;
 import com.physicsfactory.domain.model.BlenderScriptRequest;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +44,10 @@ import org.slf4j.LoggerFactory;
  *   <li><b>Both output streams are drained on virtual threads.</b> Blender is chatty; if stdout were
  *       read on the calling thread the pipe could fill and deadlock before the timeout was ever
  *       evaluated.
+ *   <li><b>Output is collected line by line, not in one read at the end.</b> A render that has to be
+ *       killed is exactly the render whose output is most worth having - it is the one that was too
+ *       slow - and reading the whole stream in a single call means a killed process yields nothing.
+ *       Reading incrementally keeps everything that arrived before the kill.
  * </ul>
  */
 public final class ProcessBlenderRunner implements BlenderProcessRunner {
@@ -52,6 +59,17 @@ public final class ProcessBlenderRunner implements BlenderProcessRunner {
      * open, and waiting forever for a process we already gave up on would defeat the timeout.
      */
     private static final Duration STREAM_DRAIN_GRACE = Duration.ofSeconds(2);
+
+    /**
+     * Blender's own progress chatter is enormous and says nothing useful once a render is working.
+     * These are the prefixes of the key=value contract the engine prints, and they are the lines
+     * worth putting in the application log as they arrive: what the scene did, what the physics did,
+     * and how long each stage took.
+     */
+    private static final List<String> REPORTED_PREFIXES = List.of("render.", "physics.", "timing.");
+
+    /** How much collected output to show when a render had to be killed. */
+    private static final int TIMEOUT_REPORT_LINES = 12;
 
     private static final String VERSION_FLAG = "--version";
     private static final String BACKGROUND_FLAG = "--background";
@@ -109,8 +127,11 @@ public final class ProcessBlenderRunner implements BlenderProcessRunner {
 
         Instant start = Instant.now();
         Process process = start(command);
-        StreamCollector standardOutput = StreamCollector.draining(process.getInputStream());
-        StreamCollector standardError = StreamCollector.draining(process.getErrorStream());
+        // Blender's own reporting is logged as it arrives, so a long render says what it is doing
+        // instead of going silent for an hour.
+        StreamCollector standardOutput = StreamCollector.draining(process.getInputStream(),
+                line -> reportProgress(description, line));
+        StreamCollector standardError = StreamCollector.draining(process.getErrorStream(), line -> { });
         try {
             boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!finished) {
@@ -119,7 +140,10 @@ public final class ProcessBlenderRunner implements BlenderProcessRunner {
                 process.destroyForcibly();
                 standardOutput.join(STREAM_DRAIN_GRACE);
                 standardError.join(STREAM_DRAIN_GRACE);
-                log.error("Blender {} timed out after {} and was terminated", description, timeout);
+                // What it managed to report before being killed is the only evidence of where the
+                // time went, so it is logged rather than discarded with the process.
+                log.error("Blender {} timed out after {} and was terminated | last reported: {}",
+                        description, timeout, standardOutput.reportedTail(TIMEOUT_REPORT_LINES));
                 throw new BlenderTimeoutException(command, timeout);
             }
             standardOutput.join();
@@ -133,6 +157,14 @@ public final class ProcessBlenderRunner implements BlenderProcessRunner {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new BlenderExecutionException("Interrupted while waiting for Blender " + description + ".", e);
+        }
+    }
+
+    /** Logs one line of Blender's output when it is part of the engine's key=value contract. */
+    private static void reportProgress(String description, String line) {
+        String trimmed = line.strip();
+        if (REPORTED_PREFIXES.stream().anyMatch(trimmed::startsWith)) {
+            log.info("Blender {} | {}", description, trimmed);
         }
     }
 
@@ -156,30 +188,50 @@ public final class ProcessBlenderRunner implements BlenderProcessRunner {
     }
 
     /**
-     * Reads one process stream to exhaustion on a virtual thread, so neither stream can block the
-     * timeout from being enforced.
+     * Reads one process stream on a virtual thread, so neither stream can block the timeout from
+     * being enforced, and hands every line to an observer as it arrives.
+     *
+     * <p>Lines are appended as they are read rather than collected in one call at the end. That is
+     * what makes the output of a killed render survivable: a single read that never returns leaves
+     * nothing behind, and the render we most want to explain is the one that had to be killed.
      */
     private static final class StreamCollector {
 
-        private final AtomicReference<String> text;
+        private final StringBuilder collected = new StringBuilder();
+        private final List<String> reported = new ArrayList<>();
         private final Thread thread;
 
-        private StreamCollector(Thread thread, AtomicReference<String> text) {
+        private StreamCollector(Thread thread) {
             this.thread = thread;
-            this.text = text;
         }
 
-        static StreamCollector draining(InputStream stream) {
-            AtomicReference<String> text = new AtomicReference<>("");
-            Thread thread = Thread.ofVirtual().start(() -> {
-                try (InputStream source = stream) {
-                    text.set(new String(source.readAllBytes(), StandardCharsets.UTF_8));
+        static StreamCollector draining(InputStream stream, Consumer<String> observer) {
+            AtomicReference<StreamCollector> self = new AtomicReference<>();
+            Thread thread = Thread.ofVirtual().unstarted(() -> {
+                StreamCollector collector = self.get();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                    for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                        collector.accept(line);
+                        observer.accept(line);
+                    }
                 } catch (IOException e) {
-                    // The process was killed while we were reading; whatever arrived is good enough.
+                    // The process was killed while we were reading; whatever arrived is kept.
                     log.debug("Stopped reading a Blender stream early", e);
                 }
             });
-            return new StreamCollector(thread, text);
+            StreamCollector collector = new StreamCollector(thread);
+            self.set(collector);
+            thread.start();
+            return collector;
+        }
+
+        private synchronized void accept(String line) {
+            collected.append(line).append(System.lineSeparator());
+            String trimmed = line.strip();
+            if (REPORTED_PREFIXES.stream().anyMatch(trimmed::startsWith)) {
+                reported.add(trimmed);
+            }
         }
 
         void join() throws InterruptedException {
@@ -190,8 +242,16 @@ public final class ProcessBlenderRunner implements BlenderProcessRunner {
             thread.join(grace.toMillis());
         }
 
-        String text() {
-            return text.get();
+        synchronized String text() {
+            return collected.toString();
+        }
+
+        /** The last few contract lines seen, for explaining a render that never finished. */
+        synchronized String reportedTail(int limit) {
+            if (reported.isEmpty()) {
+                return "(nothing reported)";
+            }
+            return String.join(" | ", reported.subList(Math.max(0, reported.size() - limit), reported.size()));
         }
     }
 }

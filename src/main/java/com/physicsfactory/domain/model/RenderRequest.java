@@ -15,8 +15,14 @@ import java.util.regex.Pattern;
  * @param template   template name, for example {@code healthcheck}
  * @param outputFile where the finished video belongs, relative to the workspace root
  * @param timeout    how long Blender may take before the invocation is killed
+ * @param quality    how much rendering cost this render may pay
  */
-public record RenderRequest(String template, Path outputFile, Duration timeout) {
+public record RenderRequest(String template, Path outputFile, Duration timeout, RenderQuality quality) {
+
+    /** A render at publishable quality, which is what anything unspecified should mean. */
+    public RenderRequest(String template, Path outputFile, Duration timeout) {
+        this(template, outputFile, timeout, RenderQuality.PRODUCTION);
+    }
 
     // Template names are identifiers such as 'DefaultSphere' or 'healthcheck'. Letters, digits, '-'
     // and '_' only, so a name can never carry a path segment into a script or template lookup.
@@ -26,6 +32,7 @@ public record RenderRequest(String template, Path outputFile, Duration timeout) 
         Objects.requireNonNull(template, "template must not be null");
         Objects.requireNonNull(outputFile, "outputFile must not be null");
         Objects.requireNonNull(timeout, "timeout must not be null");
+        Objects.requireNonNull(quality, "quality must not be null");
         if (!TEMPLATE_NAME.matcher(template).matches()) {
             throw new InvalidSceneContractException("Template name '" + template
                     + "' is invalid: use letters, digits, '-' and '_' only.");
