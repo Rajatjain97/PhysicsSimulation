@@ -1,6 +1,7 @@
 package com.physicsfactory.infrastructure.config;
 
 import com.physicsfactory.application.port.BlenderProcessRunner;
+import com.physicsfactory.application.port.BatchManifestWriter;
 import com.physicsfactory.application.port.BlenderRuntimeLibrary;
 import com.physicsfactory.application.port.BlenderScriptLibrary;
 import com.physicsfactory.application.port.DirectoryProvisioner;
@@ -10,16 +11,21 @@ import com.physicsfactory.application.port.StartupReporter;
 import com.physicsfactory.application.usecase.BootstrapEnvironment;
 import com.physicsfactory.application.usecase.DetectBlenderVersion;
 import com.physicsfactory.application.usecase.PrepareWorkspace;
+import com.physicsfactory.application.usecase.RenderBatch;
 import com.physicsfactory.application.usecase.RenderScene;
 import com.physicsfactory.application.usecase.RunBlenderHealthcheck;
 import com.physicsfactory.application.usecase.ValidateBlenderInstallation;
+import com.physicsfactory.domain.model.BatchRequest;
 import com.physicsfactory.domain.model.RenderRequest;
 import com.physicsfactory.domain.model.RenderWorkspace;
+import com.physicsfactory.domain.model.WorkspaceDirectory;
 import com.physicsfactory.domain.model.WorkspaceLayout;
+import com.physicsfactory.infrastructure.batch.JacksonBatchManifestWriter;
 import com.physicsfactory.infrastructure.blender.ClasspathBlenderRuntimeLibrary;
 import com.physicsfactory.infrastructure.blender.ClasspathBlenderScriptLibrary;
 import com.physicsfactory.infrastructure.blender.JacksonSceneContractWriter;
 import com.physicsfactory.infrastructure.blender.ProcessBlenderRunner;
+import com.physicsfactory.infrastructure.bootstrap.BatchRenderRunner;
 import com.physicsfactory.infrastructure.bootstrap.BlenderHealthcheckRunner;
 import com.physicsfactory.infrastructure.bootstrap.EnvironmentBootstrapRunner;
 import com.physicsfactory.infrastructure.bootstrap.SceneRenderRunner;
@@ -28,6 +34,7 @@ import com.physicsfactory.infrastructure.filesystem.LocalDirectoryProvisioner;
 import com.physicsfactory.infrastructure.filesystem.LocalExecutableProbe;
 import com.physicsfactory.infrastructure.logging.LoggingStartupReporter;
 import java.nio.file.Path;
+import java.util.Random;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ExitCodeExceptionMapper;
 import org.springframework.boot.info.BuildProperties;
@@ -193,6 +200,40 @@ class BootstrapConfiguration {
         return new SceneRenderRunner(renderScene,
                 new RenderRequest(render.template(), Path.of(render.outputFile()), render.timeout()),
                 render.parameters());
+    }
+
+    @Bean
+    BatchManifestWriter batchManifestWriter() {
+        return new JacksonBatchManifestWriter();
+    }
+
+    /** Batches reuse the single-render pipeline; there is only one renderer in this codebase. */
+    @Bean
+    RenderBatch renderBatch(RenderScene renderScene,
+                            DirectoryProvisioner directoryProvisioner,
+                            BatchManifestWriter batchManifestWriter,
+                            WorkspaceLayout workspaceLayout) {
+        return new RenderBatch(renderScene, directoryProvisioner, batchManifestWriter, workspaceLayout.root());
+    }
+
+    /**
+     * The batch runner, after the single-render runner so one command never means both.
+     *
+     * <p>The batch seed is resolved here rather than inside the batch: an unseeded batch gets one
+     * generated now, so what runs is always a fully specified request that the manifest can record.
+     */
+    @Bean
+    @Order(30)
+    BatchRenderRunner batchRenderRunner(RenderBatch renderBatch,
+                                        PhysicsFactoryProperties properties,
+                                        WorkspaceLayout workspaceLayout) {
+        PhysicsFactoryProperties.Batch batch = properties.batch();
+        long seed = (batch.seed() != null) ? batch.seed() : Math.abs(new Random().nextLong() % 1_000_000_000L);
+        Path outputDirectory = workspaceLayout.root()
+                .relativize(workspaceLayout.pathOf(WorkspaceDirectory.BATCH_OUTPUT));
+        BatchRequest request = new BatchRequest(batch.template(), batch.count(), outputDirectory, seed,
+                batch.parameters(), batch.timeout());
+        return new BatchRenderRunner(renderBatch, request, workspaceLayout.root(), batch.dryRun());
     }
 
     @Bean

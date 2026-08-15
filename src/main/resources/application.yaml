@@ -26,6 +26,7 @@ physics-factory:
       video-output: output/videos
       thumbnail-output: output/thumbnails
       image-output: output/renders
+      batch-output: output/batches
       logs: logs
       # The render workspace. Everything below blender/ belongs to the render engine and can be
       # deleted without losing a deliverable; output/ holds what the user actually wants.
@@ -70,6 +71,17 @@ physics-factory:
       dropHeight: 5
       physicsPreset: Bouncy
       material: DefaultGlass
+
+  # One command, many videos: '--batch'. Every video gets its own seed derived from the batch seed,
+  # so the same batch seed always produces the same set of scenes. Leave 'seed' out and one is
+  # generated and recorded in the batch manifest.
+  batch:
+    template: MarbleArena
+    count: 3
+    dry-run: false
+    timeout: 45m
+    parameters:
+      durationSeconds: 20
 
 logging:
   level:

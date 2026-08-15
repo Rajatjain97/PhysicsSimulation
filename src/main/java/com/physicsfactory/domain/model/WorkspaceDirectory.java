@@ -27,6 +27,9 @@ public enum WorkspaceDirectory {
     /** Rendered still images. */
     IMAGE_OUTPUT,
 
+    /** One directory per batch, each holding its videos and its manifest. */
+    BATCH_OUTPUT,
+
     /** Application log files. */
     LOGS,
 

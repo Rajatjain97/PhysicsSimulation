@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -20,12 +21,14 @@ import org.springframework.validation.annotation.Validated;
  * @param workspace where Physics Factory keeps its files
  * @param blender   how to reach Blender and how long it may take
  * @param render    the scene rendered by {@code --render}
+ * @param batch     the batch rendered by {@code --batch}
  */
 @ConfigurationProperties(prefix = "physics-factory")
 @Validated
 public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
                                        @Valid @NotNull Blender blender,
-                                       @Valid @NotNull Render render) {
+                                       @Valid @NotNull Render render,
+                                       @Valid @NotNull Batch batch) {
 
     /**
      * @param root        workspace root; may be absolute or relative to the process working directory
@@ -66,5 +69,21 @@ public record PhysicsFactoryProperties(@Valid @NotNull Workspace workspace,
                          @NotBlank String outputFile,
                          @NotNull Duration timeout,
                          @NotNull Map<String, Object> parameters) {
+    }
+
+    /**
+     * @param template   template every video in the batch uses
+     * @param count      how many videos to render
+     * @param seed       batch seed; leave it out and one is generated and recorded
+     * @param dryRun     print the plan and the seeds without launching Blender
+     * @param timeout    render budget for a single video
+     * @param parameters parameters shared by every video; each video's seed is added per render
+     */
+    public record Batch(@NotBlank String template,
+                        @Positive int count,
+                        Long seed,
+                        boolean dryRun,
+                        @NotNull Duration timeout,
+                        @NotNull Map<String, Object> parameters) {
     }
 }
