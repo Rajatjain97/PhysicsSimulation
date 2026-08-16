@@ -93,8 +93,10 @@ def start_physics(event, stage) -> None:
     events: the bodies all have to exist before anything is simulated, and simulating once is the
     difference between a reel and twenty-five reels.
 
-    The simulation length comes from the render settings, so a reel is always simulated for exactly
-    as long as it is shown.
+    The simulation is what decides how long the reel is. It runs until these bodies have stopped
+    moving - not until a requested duration runs out - and the frame that happened on is left on the
+    stage for everything scheduled afterwards. Nothing is nudged, keyframed or removed to make that
+    moment arrive sooner.
     """
     names = event.data.get("targets") or ([event.data.get("target")] if event.data.get("target") else [])
     if not names:
@@ -111,7 +113,11 @@ def start_physics(event, stage) -> None:
                             shape=_collision_shape(stage.spawned.get(target_name, "sphere")),
                             preset_name=preset_name)
 
-    physics.simulate(stage.settings.frames, stage.settings.fps, tracked_name=names[0])
+    settings = stage.settings
+    outcome = physics.simulate(settings.budget_frames, settings.fps, settings.frames,
+                               hold_frames=settings.hold_frames, tracked_names=names)
+    stage.content_end_frame = outcome.content_end_frame
+    stage.settled = outcome.settled
 
 
 def camera_preset(event, stage) -> None:
@@ -120,7 +126,7 @@ def camera_preset(event, stage) -> None:
         preset=str(event.data.get("preset", DEFAULT_CAMERA_PRESET)),
         covers=float(event.data.get("covers", 0.0)),
         target=event.data.get("target"),
-        frames=stage.settings.frames,
+        frames=stage.frames,
         fps=stage.settings.fps,
         options={key: value for key, value in event.data.items()
                  if key not in ("preset", "covers", "target")})
@@ -132,15 +138,23 @@ def show_text(event, stage) -> None:
 
     Timing comes from the event itself - when it starts and how long it lasts - so a caption is
     scheduled exactly like anything else on the timeline.
+
+    A closing caption is the exception: it belongs at the end of the reel, and with a content-driven
+    duration nobody knows when that is while the timeline is being written. ``anchor="end"`` says so,
+    and the caption is placed against the length the reel actually turned out to be.
     """
+    at = event.at
+    if str(event.data.get("anchor", "")).lower() == "end":
+        at = max(0.0, stage.duration_seconds - (event.duration or 0.0))
+
     request = TextRequest(
         text=str(event.data.get("text", "")),
         style=str(event.data.get("style", "Default")),
         position=event.data.get("position"),
-        at=event.at,
+        at=at,
         duration=event.duration,
         name=event.data.get("name"))
-    show_caption(request, stage.scene, stage.settings.fps, stage.settings.frames)
+    show_caption(request, stage.scene, stage.settings.fps, stage.frames)
 
 
 def wait(event, stage) -> None:

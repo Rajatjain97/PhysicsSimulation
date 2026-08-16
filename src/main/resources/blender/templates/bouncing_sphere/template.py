@@ -5,7 +5,8 @@ impacts, bounces with decreasing height as energy is lost, and settles. Nothing 
 the motion is simulated, which is what makes this the template every future physics scene copies.
 
 Parameters (all optional):
-    durationSeconds  how long the reel runs, default 10
+    durationSeconds  target length, default 10; the reel runs until the sphere has settled, so
+                     this is a target rather than a cut
     dropHeight       height of the sphere's centre at frame 1, in metres, default 5
     physicsPreset    how the sphere behaves on impact: "Bouncy" (default) or "Heavy"
     cameraPreset     how the reel is shot: "Static" (default), "FollowObject", "Orbit",
@@ -23,8 +24,9 @@ from dataclasses import dataclass
 
 import bpy
 
+from engine.studio import create_area_light, set_world_background
 from engine.timeline import CAMERA_PRESET, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
-from engine.template_api import RenderSettings, Template, TemplateContext
+from engine.template_api import RenderSettings, Template, TemplateContext, positive_number
 
 DEFAULT_DURATION_SECONDS = 10.0
 DEFAULT_DROP_HEIGHT = 5.0
@@ -56,8 +58,8 @@ class _ScenePlan:
 
 def _plan(context: TemplateContext) -> _ScenePlan:
     return _ScenePlan(
-        duration_seconds=_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
-        drop_height=_positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT),
+        duration_seconds=positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
+        drop_height=positive_number(context, "dropHeight", DEFAULT_DROP_HEIGHT),
         physics_preset=str(context.parameter("physicsPreset", DEFAULT_PHYSICS_PRESET)),
         camera_preset=str(context.parameter("cameraPreset", DEFAULT_CAMERA_PRESET)),
         material=str(context.parameter("material", DEFAULT_MATERIAL)),
@@ -73,28 +75,23 @@ class BouncingSphereTemplate(Template):
         bpy.ops.wm.read_factory_settings(use_empty=True)
         scene = bpy.context.scene
 
-        world = bpy.data.worlds.new("StudioWorld")
-        world.use_nodes = True
-        background = world.node_tree.nodes.get("Background")
-        if background is not None:
-            # Dark, but not black: the floor is a reflective surface and needs something to reflect,
-            # otherwise the impact happens against an invisible ground.
-            background.inputs[0].default_value = (0.05, 0.052, 0.062, 1.0)
-            background.inputs[1].default_value = 1.0
-        scene.world = world
+        # Dark, but not black: the floor is a reflective surface and needs something to reflect,
+        # otherwise the impact happens against an invisible ground.
+        set_world_background(scene, "StudioWorld", (0.05, 0.052, 0.062, 1.0))
 
         scene.render.film_transparent = False
 
     def configure_lighting(self, context: TemplateContext) -> None:
-        _add_area_light("KeyLight", energy=2400.0, size=8.0,
-                        location=(3.4, -4.2, 7.0), rotation=(math.radians(40.0), 0.0, math.radians(38.0)))
-        _add_area_light("FillLight", energy=600.0, size=10.0,
-                        location=(-4.4, -3.0, 3.0), rotation=(math.radians(70.0), 0.0, math.radians(-52.0)))
-        _add_area_light("RimLight", energy=1300.0, size=5.0,
-                        location=(0.0, 4.2, 4.6), rotation=(math.radians(122.0), 0.0, 0.0))
+        scene = bpy.context.scene
+        create_area_light(scene, "KeyLight", energy=2400.0, size=8.0,
+                          location=(3.4, -4.2, 7.0), rotation=(math.radians(40.0), 0.0, math.radians(38.0)))
+        create_area_light(scene, "FillLight", energy=600.0, size=10.0,
+                          location=(-4.4, -3.0, 3.0), rotation=(math.radians(70.0), 0.0, math.radians(-52.0)))
+        create_area_light(scene, "RimLight", energy=1300.0, size=5.0,
+                          location=(0.0, 4.2, 4.6), rotation=(math.radians(122.0), 0.0, 0.0))
         # Straight down onto the impact point, so the contact with the floor is unmistakable.
-        _add_area_light("ContactLight", energy=900.0, size=4.0,
-                        location=(0.0, -1.2, 6.0), rotation=(0.0, 0.0, 0.0))
+        create_area_light(scene, "ContactLight", energy=900.0, size=4.0,
+                          location=(0.0, -1.2, 6.0), rotation=(0.0, 0.0, 0.0))
 
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         # EEVEE, not Cycles: a ten second reel is 600 frames, and this has to finish on a laptop.
@@ -104,8 +101,8 @@ class BouncingSphereTemplate(Template):
     def timeline(self, context: TemplateContext) -> Timeline:
         """What this reel is, as intent: two objects, a framing, a simulation, and time to watch it.
 
-        Nothing reads this yet - build() still does the work - but it is the same scene described
-        without a single Blender call, which is what a later story will execute instead.
+        The scene director carries this out; the whole scene is described here without a single
+        Blender call.
         """
         plan = _plan(context)
         timeline = Timeline()
@@ -115,40 +112,17 @@ class BouncingSphereTemplate(Template):
                      radius=SPHERE_RADIUS, height=plan.drop_height, material=plan.material)
         # The camera is described, not configured: which shot, what has to stay in frame, and what
         # to look at if the shot tracks something.
+        # Physics first: the sphere decides how long the reel is, and the camera is framed against
+        # that length.
+        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, target=SPHERE_NAME)
         timeline.add(CAMERA_PRESET, at=0.0, preset=plan.camera_preset,
                      covers=plan.drop_height + SPHERE_RADIUS, target=SPHERE_NAME)
-        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, target=SPHERE_NAME)
         timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
         return timeline
 
 
 
-def _add_area_light(name: str, energy: float, size: float, location: tuple, rotation: tuple) -> None:
-    light_data = bpy.data.lights.new(name, type="AREA")
-    light_data.energy = energy
-    light_data.size = size
-    if hasattr(light_data, "use_shadow"):
-        light_data.use_shadow = True
-    light = bpy.data.objects.new(name, light_data)
-    light.location = location
-    light.rotation_euler = rotation
-    bpy.context.scene.collection.objects.link(light)
 
-
-def _number(context: TemplateContext, name: str, default: float) -> float:
-    """Parameters arrive from JSON, so a number may be written as a string. Fail clearly if it is not."""
-    value = context.parameter(name, default)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        raise ValueError("Parameter '{0}' must be a number but was {1!r}".format(name, value))
-
-
-def _positive_number(context: TemplateContext, name: str, default: float) -> float:
-    value = _number(context, name, default)
-    if value <= 0.0:
-        raise ValueError("Parameter '{0}' must be greater than zero but was {1}".format(name, value))
-    return value
 
 
 TEMPLATE = BouncingSphereTemplate()

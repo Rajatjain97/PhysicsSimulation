@@ -18,7 +18,7 @@ existing template keeps working because the base class provides no-op defaults.
 """
 
 import abc
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict
 
 from .timeline import Timeline
@@ -27,6 +27,14 @@ from .timeline import Timeline
 PORTRAIT_WIDTH = 1080
 PORTRAIT_HEIGHT = 1920
 PORTRAIT_FPS = 60
+
+
+#: How long the reel holds after its content has finished, so a video does not cut on the last event.
+DEFAULT_HOLD_SECONDS = 1.5
+
+#: The longest a reel may ever become. Content decides when a video ends, so something has to stop a
+#: simulation that never settles from rendering forever; the vertical formats top out well below this.
+MAX_REEL_SECONDS = 30.0
 
 
 def frames_for(duration_seconds: float, fps: int) -> int:
@@ -39,8 +47,14 @@ class RenderSettings:
     """What the renderer needs from a template. Declared by the template, applied by the renderer.
 
     Duration is what makes a template a video rather than a still: leave it at zero and the renderer
-    writes one image, set it and the renderer writes a movie of that length. Templates therefore
-    choose their own natural duration and never touch a Blender output setting.
+    writes one image, set it and the renderer writes a movie. Templates therefore choose their own
+    natural duration and never touch a Blender output setting.
+
+    ``duration_seconds`` is the duration that was *asked for*, and it is a target rather than a cut.
+    A reel of falling objects is finished when the objects have finished falling, not when a number
+    ran out, so what it really controls is how long the template schedules its content over. The
+    video itself ends at content completion plus :attr:`hold_seconds`, and
+    :attr:`max_duration_seconds` is the ceiling that stops a simulation which never settles.
     """
 
     width: int = PORTRAIT_WIDTH
@@ -52,6 +66,8 @@ class RenderSettings:
     color_mode: str = "RGBA"
     fps: int = PORTRAIT_FPS
     duration_seconds: float = 0.0
+    hold_seconds: float = DEFAULT_HOLD_SECONDS
+    max_duration_seconds: float = MAX_REEL_SECONDS
 
     @property
     def resolution(self) -> str:
@@ -63,7 +79,60 @@ class RenderSettings:
 
     @property
     def frames(self) -> int:
+        """Frames the template plans its content over: the requested duration, nothing more."""
         return frames_for(self.duration_seconds, self.fps)
+
+    @property
+    def hold_frames(self) -> int:
+        return frames_for(self.hold_seconds, self.fps) if self.hold_seconds > 0.0 else 0
+
+    @property
+    def budget_frames(self) -> int:
+        """The most frames a simulation may run for. Never shorter than what was requested."""
+        return max(self.frames, frames_for(self.max_duration_seconds, self.fps))
+
+    def with_limits(self, hold_seconds: float, max_duration_seconds: float) -> "RenderSettings":
+        """A copy carrying operator-supplied duration limits. Frozen, so this returns a new one."""
+        return replace(self, hold_seconds=max(0.0, float(hold_seconds)),
+                       max_duration_seconds=max(float(max_duration_seconds), self.duration_seconds))
+
+
+@dataclass(frozen=True)
+class DurationPlan:
+    """The duration decision, in one object: what was asked for, what the content needed, what ran.
+
+    Built once the content has actually been simulated and then carried to everything downstream, so
+    the renderer, the manifest and the log all state the same numbers rather than each deriving their
+    own. ``settled`` records whether the content genuinely finished or the reel ceiling cut it off -
+    the one case where a video really is truncated, and one worth being able to see afterwards.
+    """
+
+    fps: int
+    requested_seconds: float
+    content_frames: int
+    hold_frames: int
+    settled: bool = True
+
+    @property
+    def frames(self) -> int:
+        return max(1, self.content_frames + self.hold_frames)
+
+    @property
+    def content_seconds(self) -> float:
+        return round(self.content_frames / float(self.fps), 3)
+
+    @property
+    def hold_seconds(self) -> float:
+        return round(self.hold_frames / float(self.fps), 3)
+
+    @property
+    def seconds(self) -> float:
+        return round(self.frames / float(self.fps), 3)
+
+    def summary(self) -> str:
+        return ("requested={0:.2f}s content={1:.2f}s hold={2:.2f}s final={3:.2f}s frames={4} "
+                "settled={5}").format(self.requested_seconds, self.content_seconds, self.hold_seconds,
+                                      self.seconds, self.frames, str(self.settled).lower())
 
 
 @dataclass(frozen=True)
@@ -87,6 +156,27 @@ class TemplateContext:
 
     def parameter(self, name: str, default: Any = None) -> Any:
         return self.parameters.get(name, default)
+
+
+def number(context: "TemplateContext", name: str, default: float) -> float:
+    """Reads a numeric parameter.
+
+    Parameters arrive from JSON, so a number may be written as a string. Fail clearly if it is not a
+    number at all: a template that silently substitutes a default produces a reel nobody asked for.
+    """
+    value = context.parameter(name, default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError("Parameter '{0}' must be a number but was {1!r}".format(name, value))
+
+
+def positive_number(context: "TemplateContext", name: str, default: float) -> float:
+    """Reads a numeric parameter that would be meaningless at zero or below - a count, a height."""
+    value = number(context, name, default)
+    if value <= 0.0:
+        raise ValueError("Parameter '{0}' must be greater than zero but was {1}".format(name, value))
+    return value
 
 
 class Template(abc.ABC):
@@ -113,9 +203,9 @@ class Template(abc.ABC):
     def timeline(self, context: TemplateContext) -> Timeline:
         """What happens in this scene and when, as intent rather than Blender calls.
 
-        Nothing executes a timeline yet - build() still does the work - so a template that has not
-        described itself simply returns an empty one. When execution arrives, this becomes the
-        template's real output and build() shrinks to nothing.
+        The scene director carries this out, so this is where a template's content belongs: objects,
+        physics, framing and captions. A template that describes nothing here returns an empty
+        timeline and is built entirely by :meth:`build`, which is what a still image needs.
         """
         return Timeline()
 

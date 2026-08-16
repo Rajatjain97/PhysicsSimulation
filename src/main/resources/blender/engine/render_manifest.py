@@ -9,15 +9,20 @@ always be traced back to a run.
 import json
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from .renderer import RenderOutcome
 from .scene_contract import SceneContract
+from .template_api import DurationPlan
 
 
 def write_manifest(outcome: RenderOutcome, render_id: str, contract: SceneContract,
-                   materials: List[str]) -> str:
-    """Writes <output>.json next to the output file and returns its path."""
+                   materials: List[str], plan: Optional[DurationPlan] = None) -> str:
+    """Writes <output>.json next to the output file and returns its path.
+
+    The duration fields exist so the length of a reel is explainable after the fact: what was asked
+    for, what the content needed, what was held afterwards, and what was produced.
+    """
     manifest = {
         "renderId": render_id,
         "template": contract.template,
@@ -33,6 +38,14 @@ def write_manifest(outcome: RenderOutcome, render_id: str, contract: SceneContra
             "video" if contract.is_video else "image": os.path.basename(outcome.output_path),
         },
     }
+    if plan is not None:
+        manifest.update({
+            "requestedDurationSeconds": round(plan.requested_seconds, 3),
+            "contentDurationSeconds": plan.content_seconds,
+            "postEventHoldSeconds": plan.hold_seconds,
+            "contentSettled": plan.settled,
+        })
+
     manifest_path = os.path.splitext(outcome.output_path)[0] + ".json"
     with open(manifest_path, "w", encoding="utf-8") as manifest_file:
         json.dump(manifest, manifest_file, indent=2)

@@ -30,12 +30,41 @@ class Stage:
     ``spawned`` is the one piece of state the director carries between events - what was created and
     what shape it was - so a physics event can attach the right collider to something an earlier
     spawn event made.
+
+    ``content_end_frame`` is the second: the frame the simulation turned out to finish on. Until a
+    physics event has run, nobody knows how long the reel is, so :attr:`frames` answers with what was
+    requested and switches to the real length once the content has been simulated. Anything whose
+    timing depends on the length of the reel - a camera move, a closing caption - must therefore be
+    scheduled *after* the physics event on the timeline, which is the order a template describes
+    things in anyway.
     """
 
     scene: Any
     assets: Any
     settings: Any
     spawned: Dict[str, str] = field(default_factory=dict)
+    content_end_frame: Optional[int] = None
+    settled: bool = True
+
+    @property
+    def frames(self) -> int:
+        """How long the reel runs: the content, plus the hold, and never past the ceiling."""
+        if self.content_end_frame is None:
+            return self.settings.frames
+        return min(self.settings.budget_frames, self.content_end_frame + self.settings.hold_frames)
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.frames / float(self.settings.fps)
+
+
+@dataclass(frozen=True)
+class Direction:
+    """What carrying out a timeline produced: how many events ran, and how long the reel became."""
+
+    events: int
+    content_end_frame: Optional[int]
+    settled: bool
 
 
 class SceneDirector:
@@ -49,8 +78,8 @@ class SceneDirector:
     def handled_kinds(self) -> list:
         return sorted(self._handlers)
 
-    def direct(self, timeline) -> int:
-        """Carries out every event, in order, and returns how many ran.
+    def direct(self, timeline) -> Direction:
+        """Carries out every event, in order, and reports what the reel turned out to be.
 
         The scene is read at this point rather than at construction because a template resets it
         while building the environment.
@@ -67,4 +96,5 @@ class SceneDirector:
             handler(event, stage)
             directed += 1
             print("director.event=" + str(event))
-        return directed
+        return Direction(events=directed, content_end_frame=stage.content_end_frame,
+                         settled=stage.settled)

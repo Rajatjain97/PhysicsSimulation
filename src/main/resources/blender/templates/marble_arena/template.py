@@ -5,7 +5,8 @@ collide, scatter, and some find the exit. Nothing about the outcome is scripted:
 placed, the solver runs, and whatever survives in the arena survives.
 
 Parameters (all optional):
-    durationSeconds  how long the reel runs, default 20 (the format wants 15-30)
+    durationSeconds  target length, default 20 (the format wants 15-30); the reel runs until the
+                     marbles have settled, so this is a target rather than a cut
     marbleCount      how many marbles, default 25
     physicsPreset    how the marbles behave: "Bouncy" (default) or "Heavy"
     cameraPreset     "TopDown" (default), "Orbit", "FollowObject", "SlowZoom" or "Static"
@@ -30,7 +31,8 @@ The seed itself comes from the render, not from this template: see the 'seed' re
 import math
 from dataclasses import dataclass
 
-from engine.template_api import RenderSettings, Template, TemplateContext
+from engine.studio import create_area_light, set_world_background
+from engine.template_api import RenderSettings, Template, TemplateContext, positive_number
 from engine.timeline import CAMERA_PRESET, SHOW_TEXT, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
 
 DEFAULT_DURATION_SECONDS = 20.0
@@ -101,8 +103,8 @@ class _ArenaPlan:
 
 def _plan(context: TemplateContext) -> _ArenaPlan:
     return _ArenaPlan(
-        duration_seconds=_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
-        marble_count=int(_positive_number(context, "marbleCount", DEFAULT_MARBLE_COUNT)),
+        duration_seconds=positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
+        marble_count=int(positive_number(context, "marbleCount", DEFAULT_MARBLE_COUNT)),
         physics_preset=str(context.parameter("physicsPreset", DEFAULT_PHYSICS_PRESET)),
         camera_preset=str(context.parameter("cameraPreset", DEFAULT_CAMERA_PRESET)),
         marble_material=str(context.parameter("material", DEFAULT_MARBLE_MATERIAL)),
@@ -124,24 +126,19 @@ class MarbleArenaTemplate(Template):
         scene = bpy.context.scene
         scene.render.film_transparent = False
 
-        world = bpy.data.worlds.new("ArenaWorld")
-        world.use_nodes = True
-        background = world.node_tree.nodes.get("Background")
-        if background is not None:
-            background.inputs[0].default_value = (0.035, 0.037, 0.045, 1.0)
-            background.inputs[1].default_value = 1.0
-        scene.world = world
+        set_world_background(scene, "ArenaWorld", (0.035, 0.037, 0.045, 1.0))
 
     def configure_lighting(self, context: TemplateContext) -> None:
         import bpy
 
+        scene = bpy.context.scene
         # An overhead softbox for the arena, plus two rakes so the glass has edges to catch.
-        _add_area_light(bpy, "KeyLight", energy=4200.0, size=14.0,
-                        location=(0.0, 0.0, 11.0), rotation=(0.0, 0.0, 0.0))
-        _add_area_light(bpy, "RakeLeft", energy=1400.0, size=8.0,
-                        location=(-7.5, -6.0, 6.0), rotation=(math.radians(52.0), 0.0, math.radians(-42.0)))
-        _add_area_light(bpy, "RakeRight", energy=1400.0, size=8.0,
-                        location=(7.5, 6.0, 6.0), rotation=(math.radians(52.0), 0.0, math.radians(138.0)))
+        create_area_light(scene, "KeyLight", energy=4200.0, size=14.0,
+                          location=(0.0, 0.0, 11.0), rotation=(0.0, 0.0, 0.0))
+        create_area_light(scene, "RakeLeft", energy=1400.0, size=8.0,
+                          location=(-7.5, -6.0, 6.0), rotation=(math.radians(52.0), 0.0, math.radians(-42.0)))
+        create_area_light(scene, "RakeRight", energy=1400.0, size=8.0,
+                          location=(7.5, 6.0, 6.0), rotation=(math.radians(52.0), 0.0, math.radians(138.0)))
 
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         return RenderSettings(engine="EEVEE", samples=RENDER_SAMPLES, fps=FPS,
@@ -156,15 +153,17 @@ class MarbleArenaTemplate(Template):
         self._add_arena(timeline, plan)
         marbles = self._add_marbles(timeline, plan, context)
 
+        # Physics first: the marbles decide how long the reel is, and the camera and the winner
+        # caption are both scheduled against that length.
+        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, targets=marbles)
         timeline.add(CAMERA_PRESET, at=0.0, preset=plan.camera_preset,
                      covers=2.0 * ARENA_RADIUS + FRAME_MARGIN, target=marbles[0])
-        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, targets=marbles)
 
         # The captions are the template's own words, scheduled like any other event.
         timeline.add(SHOW_TEXT, at=0.0, duration=HOOK_SECONDS, style="Hook", name="HookCaption",
                      text=str(plan.hook_text))
-        timeline.add(SHOW_TEXT, at=max(plan.duration_seconds - WINNER_SECONDS, 0.0),
-                     duration=WINNER_SECONDS, style="Winner", name="WinnerCaption",
+        timeline.add(SHOW_TEXT, at=0.0, duration=WINNER_SECONDS, anchor="end",
+                     style="Winner", name="WinnerCaption",
                      text=str(plan.winner_text))
 
         timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
@@ -221,31 +220,7 @@ class MarbleArenaTemplate(Template):
         return names
 
 
-def _add_area_light(bpy, name: str, energy: float, size: float, location: tuple, rotation: tuple) -> None:
-    light_data = bpy.data.lights.new(name, type="AREA")
-    light_data.energy = energy
-    light_data.size = size
-    if hasattr(light_data, "use_shadow"):
-        light_data.use_shadow = True
-    light = bpy.data.objects.new(name, light_data)
-    light.location = location
-    light.rotation_euler = rotation
-    bpy.context.scene.collection.objects.link(light)
 
-
-def _number(context: TemplateContext, name: str, default: float) -> float:
-    value = context.parameter(name, default)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        raise ValueError("Parameter '{0}' must be a number but was {1!r}".format(name, value))
-
-
-def _positive_number(context: TemplateContext, name: str, default: float) -> float:
-    value = _number(context, name, default)
-    if value <= 0.0:
-        raise ValueError("Parameter '{0}' must be greater than zero but was {1}".format(name, value))
-    return value
 
 
 TEMPLATE = MarbleArenaTemplate()

@@ -15,6 +15,7 @@ import math
 import bpy
 
 from engine.asset_api import set_shader_input
+from engine.studio import create_area_light, set_world_background
 from engine.template_api import RenderSettings, Template, TemplateContext
 
 SPHERE_RADIUS = 1.0
@@ -37,13 +38,7 @@ class DefaultSphereTemplate(Template):
         palette = BACKGROUNDS.get(str(context.parameter("background", "dark")).lower(), BACKGROUNDS["dark"])
 
         scene = bpy.context.scene
-        world = bpy.data.worlds.new("StudioWorld")
-        world.use_nodes = True
-        background = world.node_tree.nodes.get("Background")
-        if background is not None:
-            background.inputs[0].default_value = palette["world"]
-            background.inputs[1].default_value = 1.0
-        scene.world = world
+        set_world_background(scene, "StudioWorld", palette["world"])
 
         bpy.ops.mesh.primitive_plane_add(size=40.0, location=(0.0, 0.0, 0.0))
         floor = bpy.context.active_object
@@ -74,12 +69,13 @@ class DefaultSphereTemplate(Template):
         scene.camera = camera
 
     def configure_lighting(self, context: TemplateContext) -> None:
-        _add_area_light("KeyLight", energy=900.0, size=7.0,
-                        location=(2.6, -3.2, 4.6), rotation=(math.radians(42.0), 0.0, math.radians(35.0)))
-        _add_area_light("FillLight", energy=220.0, size=9.0,
-                        location=(-3.6, -2.4, 2.2), rotation=(math.radians(72.0), 0.0, math.radians(-52.0)))
-        _add_area_light("RimLight", energy=650.0, size=4.0,
-                        location=(0.0, 3.4, 3.2), rotation=(math.radians(126.0), 0.0, 0.0))
+        scene = bpy.context.scene
+        create_area_light(scene, "KeyLight", energy=900.0, size=7.0,
+                          location=(2.6, -3.2, 4.6), rotation=(math.radians(42.0), 0.0, math.radians(35.0)))
+        create_area_light(scene, "FillLight", energy=220.0, size=9.0,
+                          location=(-3.6, -2.4, 2.2), rotation=(math.radians(72.0), 0.0, math.radians(-52.0)))
+        create_area_light(scene, "RimLight", energy=650.0, size=4.0,
+                          location=(0.0, 3.4, 3.2), rotation=(math.radians(126.0), 0.0, 0.0))
 
     def prepare_for_rendering(self, context: TemplateContext) -> None:
         scene = bpy.context.scene
@@ -95,16 +91,6 @@ class DefaultSphereTemplate(Template):
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         # Denoising carries the low sample count, which keeps a CPU render inside a sane budget.
         return RenderSettings(samples=64)
-
-
-def _add_area_light(name: str, energy: float, size: float, location: tuple, rotation: tuple) -> None:
-    light_data = bpy.data.lights.new(name, type="AREA")
-    light_data.energy = energy
-    light_data.size = size
-    light = bpy.data.objects.new(name, light_data)
-    light.location = location
-    light.rotation_euler = rotation
-    bpy.context.scene.collection.objects.link(light)
 
 
 def _floor_material(colour: tuple):

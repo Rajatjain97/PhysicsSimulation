@@ -6,7 +6,9 @@ solver. Nothing is keyframed, nothing is nudged, and the template never computes
 is what makes the reel worth watching to the end.
 
 Parameters (all optional):
-    durationSeconds  how long the reel runs, default 12 (the format wants 8-15)
+    durationSeconds  target length, default 12 (the format wants 8-15); the reel runs until the
+                     last ball has stopped moving, so this is what the board is planned around
+                     rather than a point at which the video is cut
     ballCount        how many balls fall, default 12
     rows             rows of pegs, default 8
     physicsPreset    "Heavy" (default) keeps balls tumbling rather than pinballing; or "Bouncy"
@@ -31,7 +33,8 @@ same seed rebuilds the same board and a batch of ten produces ten genuinely diff
 import math
 from dataclasses import dataclass
 
-from engine.template_api import RenderSettings, Template, TemplateContext
+from engine.studio import create_area_light, set_world_background
+from engine.template_api import RenderSettings, Template, TemplateContext, positive_number
 from engine.timeline import CAMERA_PRESET, SHOW_TEXT, SPAWN_OBJECT, START_PHYSICS, WAIT, Timeline
 
 DEFAULT_DURATION_SECONDS = 12.0
@@ -116,16 +119,16 @@ class _BoardPlan:
 
 
 def _plan(context: TemplateContext) -> _BoardPlan:
-    rows = int(_positive_number(context, "rows", DEFAULT_ROWS))
+    rows = int(positive_number(context, "rows", DEFAULT_ROWS))
     if not MIN_ROWS <= rows <= MAX_ROWS:
         raise ValueError("Parameter 'rows' must be between {0} and {1} but was {2}".format(
             MIN_ROWS, MAX_ROWS, rows))
-    ball_count = int(_positive_number(context, "ballCount", DEFAULT_BALL_COUNT))
+    ball_count = int(positive_number(context, "ballCount", DEFAULT_BALL_COUNT))
     if ball_count > MAX_BALLS:
         raise ValueError("Parameter 'ballCount' must not exceed {0} but was {1}".format(MAX_BALLS, ball_count))
 
     return _BoardPlan(
-        duration_seconds=_positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
+        duration_seconds=positive_number(context, "durationSeconds", DEFAULT_DURATION_SECONDS),
         ball_count=ball_count,
         rows=rows,
         physics_preset=str(context.parameter("physicsPreset", DEFAULT_PHYSICS_PRESET)),
@@ -148,24 +151,19 @@ class PlinkoTemplate(Template):
         scene = bpy.context.scene
         scene.render.film_transparent = False
 
-        world = bpy.data.worlds.new("PlinkoWorld")
-        world.use_nodes = True
-        background = world.node_tree.nodes.get("Background")
-        if background is not None:
-            background.inputs[0].default_value = (0.02, 0.022, 0.028, 1.0)
-            background.inputs[1].default_value = 1.0
-        scene.world = world
+        set_world_background(scene, "PlinkoWorld", (0.02, 0.022, 0.028, 1.0))
 
     def configure_lighting(self, context: TemplateContext) -> None:
         import bpy
 
+        scene = bpy.context.scene
         # Frontal key so the balls read clearly against the board, plus two rakes for the peg edges.
-        _add_area_light(bpy, "KeyLight", energy=3200.0, size=12.0,
-                        location=(0.0, -7.0, 8.0), rotation=(math.radians(72.0), 0.0, 0.0))
-        _add_area_light(bpy, "RakeLeft", energy=900.0, size=6.0,
-                        location=(-6.0, -4.5, 9.5), rotation=(math.radians(55.0), 0.0, math.radians(-40.0)))
-        _add_area_light(bpy, "RakeRight", energy=900.0, size=6.0,
-                        location=(6.0, -4.5, 9.5), rotation=(math.radians(55.0), 0.0, math.radians(40.0)))
+        create_area_light(scene, "KeyLight", energy=3200.0, size=12.0,
+                          location=(0.0, -7.0, 8.0), rotation=(math.radians(72.0), 0.0, 0.0))
+        create_area_light(scene, "RakeLeft", energy=900.0, size=6.0,
+                          location=(-6.0, -4.5, 9.5), rotation=(math.radians(55.0), 0.0, math.radians(-40.0)))
+        create_area_light(scene, "RakeRight", energy=900.0, size=6.0,
+                          location=(6.0, -4.5, 9.5), rotation=(math.radians(55.0), 0.0, math.radians(40.0)))
 
     def render_settings(self, context: TemplateContext) -> RenderSettings:
         return RenderSettings(engine="EEVEE", samples=RENDER_SAMPLES, fps=FPS,
@@ -180,16 +178,18 @@ class PlinkoTemplate(Template):
         self._add_buckets(timeline, plan)
         balls = self._add_balls(timeline, plan, context)
 
+        # Physics first: how long the reel is depends on when the last ball comes to rest, and the
+        # camera and the closing caption are both scheduled against that length.
+        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, targets=balls)
         timeline.add(CAMERA_PRESET, at=0.0, preset=plan.camera_preset,
                      covers=BOARD_HEIGHT, target=balls[0])
-        timeline.add(START_PHYSICS, at=0.0, preset=plan.physics_preset, targets=balls)
 
         # Captions sit at the top: the action moves downwards, so the drop zone is the only part of
         # the frame that is empty when each one is on screen.
         timeline.add(SHOW_TEXT, at=0.0, duration=HOOK_SECONDS, style="Hook", position="Top",
                      name="HookCaption", text=plan.hook_text)
-        timeline.add(SHOW_TEXT, at=max(plan.duration_seconds - RESULT_SECONDS, 0.0),
-                     duration=RESULT_SECONDS, style="Winner", position="Top",
+        timeline.add(SHOW_TEXT, at=0.0, duration=RESULT_SECONDS, anchor="end",
+                     style="Winner", position="Top",
                      name="ResultCaption", text=plan.result_text)
 
         timeline.add(WAIT, at=0.0, duration=plan.duration_seconds)
@@ -294,31 +294,7 @@ class PlinkoTemplate(Template):
         return names
 
 
-def _add_area_light(bpy, name: str, energy: float, size: float, location: tuple, rotation: tuple) -> None:
-    light_data = bpy.data.lights.new(name, type="AREA")
-    light_data.energy = energy
-    light_data.size = size
-    if hasattr(light_data, "use_shadow"):
-        light_data.use_shadow = True
-    light = bpy.data.objects.new(name, light_data)
-    light.location = location
-    light.rotation_euler = rotation
-    bpy.context.scene.collection.objects.link(light)
 
-
-def _number(context: TemplateContext, name: str, default: float) -> float:
-    value = context.parameter(name, default)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        raise ValueError("Parameter '{0}' must be a number but was {1!r}".format(name, value))
-
-
-def _positive_number(context: TemplateContext, name: str, default: float) -> float:
-    value = _number(context, name, default)
-    if value <= 0.0:
-        raise ValueError("Parameter '{0}' must be greater than zero but was {1}".format(name, value))
-    return value
 
 
 TEMPLATE = PlinkoTemplate()

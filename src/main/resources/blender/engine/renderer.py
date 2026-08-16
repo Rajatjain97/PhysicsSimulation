@@ -12,10 +12,11 @@ to decorate movie filenames with a frame range.
 import glob
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 import bpy
 
-from .template_api import RenderSettings
+from .template_api import DurationPlan, RenderSettings
 from .timing import measure
 
 IMAGE_EXTENSIONS = {
@@ -105,11 +106,21 @@ class Renderer:
         # is version specific, and a render should say what it really did.
         self._traced_at = "n/a"
 
-    def render(self, settings: RenderSettings, output_path: str) -> RenderOutcome:
+    def render(self, settings: RenderSettings, output_path: str,
+               plan: Optional[DurationPlan] = None) -> RenderOutcome:
+        """Renders exactly the range the duration plan asks for.
+
+        The plan is worked out from the simulated content, so the renderer never decides how long a
+        reel is - it is told, and renders that and nothing more. Without one (a still, or a template
+        with no simulated content) the requested duration stands.
+        """
         # Relative paths are resolved against the working directory, which Java sets to the workspace
         # root, so the contract means the same thing on both sides of the boundary.
         absolute = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(absolute), exist_ok=True)
+
+        frames = plan.frames if plan is not None else settings.frames
+        duration = plan.seconds if plan is not None else settings.duration_seconds
 
         scene = bpy.context.scene
         self._apply(scene, settings)
@@ -126,12 +137,13 @@ class Renderer:
         # timed apart without rendering frame by frame. This measures them together.
         with measure("render"):
             if settings.is_animation:
-                produced = self._render_animation(scene, settings, absolute)
+                produced = self._render_animation(scene, settings, absolute, frames)
             else:
                 produced = self._render_still(scene, settings, absolute)
 
         return RenderOutcome(produced, settings.resolution, settings.fps,
-                             settings.duration_seconds, settings.frames if settings.is_animation else 1)
+                             duration if settings.is_animation else 0.0,
+                             frames if settings.is_animation else 1)
 
     def _render_still(self, scene, settings: RenderSettings, absolute: str) -> str:
         # Blender appends the extension itself, so hand it the path without one and get back exactly
@@ -148,9 +160,11 @@ class Renderer:
             raise RenderError("Blender wrote no image to " + expected)
         return expected
 
-    def _render_animation(self, scene, settings: RenderSettings, absolute: str) -> str:
+    def _render_animation(self, scene, settings: RenderSettings, absolute: str, frames: int) -> str:
         scene.frame_start = 1
-        scene.frame_end = settings.frames
+        # Only the frames the content needed. The physics cache covers at least this far, because the
+        # simulation ran the hold as well before the first pixel was drawn.
+        scene.frame_end = frames
         scene.render.fps = settings.fps
         scene.render.fps_base = 1.0
         self._configure_h264(scene)
@@ -216,7 +230,7 @@ class Renderer:
         render.resolution_y = settings.height
         render.resolution_percentage = self._quality.resolution_percentage
         render.image_settings.color_mode = settings.color_mode
-        render.engine = _resolve_engine(scene, settings.engine)
+        _select_engine(scene, settings.engine)
 
         samples = self._quality.samples_for(settings.samples)
         cycles = getattr(scene, "cycles", None)
@@ -253,13 +267,26 @@ def _trace_resolution(eevee, divisor: int) -> str:
     return "1 (this build has no trace resolution control)"
 
 
-def _resolve_engine(scene, requested: str) -> str:
-    available = {item.identifier for item in scene.render.bl_rna.properties["engine"].enum_items}
-    for identifier in ENGINE_IDENTIFIERS.get(requested, (requested,)):
-        if identifier in available:
+def _select_engine(scene, requested: str) -> str:
+    """Sets the render engine to the first identifier this Blender actually accepts.
+
+    Selection is by assignment rather than by reading the engine enum, because the enum on the RNA
+    property is the *static* list compiled into Blender: engines that register at runtime - Cycles
+    is one, being an add-on - are usable but absent from it. Reading that list rejected Cycles on a
+    Blender that renders with Cycles perfectly well, while every EEVEE template kept working, which
+    is why it went unnoticed. Assignment is validated against the live list, so it answers the
+    question we are actually asking.
+    """
+    tried = ENGINE_IDENTIFIERS.get(requested, (requested,))
+    for identifier in tried:
+        if _try_set(scene.render, "engine", identifier) and scene.render.engine == identifier:
             return identifier
-    raise RenderError("No render engine for '{0}'; this Blender offers {1}".format(
-        requested, ", ".join(sorted(available))))
+
+    static_list = sorted(item.identifier for item in scene.render.bl_rna.properties["engine"].enum_items)
+    raise RenderError(
+        "No render engine for '{0}': this Blender rejected {1}. Its built-in engines are {2} "
+        "(add-on engines register at runtime and are not listed there).".format(
+            requested, ", ".join(tried), ", ".join(static_list) or "none"))
 
 
 def _set(target, name: str, value) -> None:
